@@ -1,0 +1,241 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   DESIGN TOKENS — CSS Custom Properties por tema
+   Aplicados via classe no <html>: theme-dark | theme-blue | theme-green
+   ============================================================ */
+
+/* ── TEMA ESCURO (padrão) ─────────────────────────────────── */
+:root,
+.theme-dark {
+  --surface-base:    #0f172a;
+  --surface-raised:  #1e293b;
+  --surface-overlay: #334155;
+  --surface-border:  #475569;
+
+  --content-primary:   #f1f5f9;
+  --content-secondary: #cbd5e1;
+  --content-muted:     #94a3b8;
+  --content-inverse:   #0f172a;
+
+  --accent:       #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-muted: rgba(30,58,138,0.6);
+  --accent-text:  #93c5fd;
+
+  --status-draft-bg:      rgba(66,32,6,0.8);
+  --status-draft-text:    #fed7aa;
+  --status-review-bg:     rgba(30,58,138,0.8);
+  --status-review-text:   #bfdbfe;
+  --status-approved-bg:   rgba(20,83,45,0.8);
+  --status-approved-text: #bbf7d0;
+}
+
+/* ── TEMA AZUL ESCURO ─────────────────────────────────────── */
+.theme-blue {
+  --surface-base:    #060d1a;
+  --surface-raised:  #0c1829;
+  --surface-overlay: #132338;
+  --surface-border:  #1a3254;
+
+  --content-primary:   #e0f2fe;
+  --content-secondary: #7dd3fc;
+  --content-muted:     #38bdf8;
+  --content-inverse:   #060d1a;
+
+  --accent:       #38bdf8;
+  --accent-hover: #0ea5e9;
+  --accent-muted: rgba(12,74,110,0.7);
+  --accent-text:  #bae6fd;
+
+  --status-draft-bg:      rgba(67,20,7,0.8);
+  --status-draft-text:    #fed7aa;
+  --status-review-bg:     rgba(12,74,110,0.8);
+  --status-review-text:   #bae6fd;
+  --status-approved-bg:   rgba(20,83,45,0.8);
+  --status-approved-text: #bbf7d0;
+}
+
+/* ── TEMA VERDE ESCURO ────────────────────────────────────── */
+.theme-green {
+  --surface-base:    #041509;
+  --surface-raised:  #0a2112;
+  --surface-overlay: #112e1a;
+  --surface-border:  #1a4529;
+
+  --content-primary:   #dcfce7;
+  --content-secondary: #86efac;
+  --content-muted:     #4ade80;
+  --content-inverse:   #041509;
+
+  --accent:       #22c55e;
+  --accent-hover: #16a34a;
+  --accent-muted: rgba(20,83,45,0.7);
+  --accent-text:  #86efac;
+
+  --status-draft-bg:      rgba(66,32,6,0.8);
+  --status-draft-text:    #fed7aa;
+  --status-review-bg:     rgba(30,58,138,0.8);
+  --status-review-text:   #bfdbfe;
+  --status-approved-bg:   rgba(20,83,45,0.8);
+  --status-approved-text: #bbf7d0;
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+@layer base {
+  html {
+    transition: background-color 0.2s ease;
+  }
+
+  body {
+    background-color: var(--surface-base);
+    color: var(--content-primary);
+    @apply antialiased min-h-screen;
+  }
+
+  * {
+    border-color: var(--surface-border);
+    box-sizing: border-box;
+  }
+
+  ::-webkit-scrollbar        { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track  { background: var(--surface-raised); }
+  ::-webkit-scrollbar-thumb  { background: var(--surface-overlay); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+}
+
+/* ============================================================
+   COMPONENTS — todos tema-aware via CSS vars
+   ============================================================ */
+@layer components {
+
+  /* ── Botões ─────────────────────────────────────────────── */
+  .btn-primary {
+    background-color: var(--accent);
+    color: #fff;
+    @apply font-semibold py-2 px-4 rounded-lg transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2;
+  }
+  .btn-primary:hover:not(:disabled) { background-color: var(--accent-hover); }
+
+  .btn-secondary {
+    background-color: var(--surface-raised);
+    color: var(--content-secondary);
+    border: 1px solid var(--surface-border);
+    @apply font-semibold py-2 px-4 rounded-lg transition-all duration-150
+           inline-flex items-center justify-center gap-2;
+  }
+  .btn-secondary:hover { background-color: var(--surface-overlay); color: var(--content-primary); }
+
+  .btn-ghost {
+    background-color: transparent;
+    color: var(--content-secondary);
+    @apply font-medium py-2 px-3 rounded-lg transition-all duration-150
+           inline-flex items-center justify-center gap-2;
+  }
+  .btn-ghost:hover { background-color: var(--surface-raised); color: var(--content-primary); }
+
+  .btn-danger {
+    background-color: transparent;
+    color: #f87171;
+    @apply font-medium py-2 px-3 rounded-lg transition-all duration-150 text-sm;
+  }
+  .btn-danger:hover { background-color: rgba(239,68,68,0.15); color: #fca5a5; }
+
+  /* ── Inputs ─────────────────────────────────────────────── */
+  .input-field {
+    width: 100%;
+    background-color: var(--surface-raised);
+    color: var(--content-primary);
+    border: 1px solid var(--surface-border);
+    @apply rounded-lg px-3 py-2 text-sm outline-none transition-all duration-150;
+  }
+  .input-field::placeholder { color: var(--content-muted); }
+  .input-field:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-muted);
+  }
+
+  /* ── Cards ──────────────────────────────────────────────── */
+  .card {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    @apply rounded-xl p-6;
+  }
+  .card-hover {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    @apply rounded-xl p-5 transition-all duration-200 cursor-pointer;
+  }
+  .card-hover:hover {
+    background-color: var(--surface-overlay);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  /* ── Badges de status ───────────────────────────────────── */
+  .badge-draft    { background-color: var(--status-draft-bg);    color: var(--status-draft-text);    @apply text-xs font-semibold px-2.5 py-0.5 rounded-full; }
+  .badge-review   { background-color: var(--status-review-bg);   color: var(--status-review-text);   @apply text-xs font-semibold px-2.5 py-0.5 rounded-full; }
+  .badge-approved { background-color: var(--status-approved-bg); color: var(--status-approved-text); @apply text-xs font-semibold px-2.5 py-0.5 rounded-full; }
+
+  /* ── Navbar ─────────────────────────────────────────────── */
+  .navbar {
+    background-color: var(--surface-raised);
+    border-bottom: 1px solid var(--surface-border);
+    @apply px-4 py-3 flex items-center justify-between sticky top-0 z-40;
+    backdrop-filter: blur(10px);
+  }
+
+  /* ── Stat cards do dashboard ────────────────────────────── */
+  .stat-card {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    @apply rounded-xl p-5;
+  }
+  .stat-card-accent {
+    background-color: var(--accent-muted);
+    border: 1px solid var(--accent);
+    @apply rounded-xl p-5;
+  }
+
+  /* ── Progress bar ───────────────────────────────────────── */
+  .progress-track {
+    background-color: var(--surface-overlay);
+    @apply rounded-full h-1.5 w-full overflow-hidden;
+  }
+  .progress-fill {
+    background-color: var(--accent);
+    @apply h-full rounded-full transition-all duration-700;
+  }
+
+  /* ── Alertas ────────────────────────────────────────────── */
+  .alert-error {
+    background-color: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.4);
+    color: #fca5a5;
+    @apply rounded-lg px-4 py-3 text-sm;
+  }
+  .alert-success {
+    background-color: var(--status-approved-bg);
+    border: 1px solid var(--status-approved-text);
+    color: var(--status-approved-text);
+    @apply rounded-lg px-4 py-3 text-sm;
+  }
+
+  /* ── Link accent ────────────────────────────────────────── */
+  .link-accent { color: var(--accent-text); @apply hover:underline transition-colors; }
+
+  /* ── Divider ────────────────────────────────────────────── */
+  .divider { border-top: 1px solid var(--surface-border); @apply my-4; }
+
+  /* ── Skeleton loader ────────────────────────────────────── */
+  .skeleton {
+    background-color: var(--surface-overlay);
+    @apply rounded animate-pulse;
+  }
+}
