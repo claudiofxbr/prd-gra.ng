@@ -788,6 +788,16 @@ function Step-SslSetup {
     Write-Info "Pre-requisito: DNS A de $($script:Config.Domain) apontando para a VPS."
     Write-Host ""
 
+    # Coletar e-mail aqui (no PowerShell) — evita problema de read interativo via SSH
+    $leEmail = ""
+    while (-not $leEmail) {
+        Write-Host "  ${C_CYAN}E-mail para o Let's Encrypt${C_RESET}: " -NoNewline
+        $leEmail = Read-Host
+        if (-not $leEmail) { Write-Host "  ${C_RED}E-mail obrigatorio.${C_RESET}" }
+    }
+    Write-Ok "E-mail: $leEmail"
+    Write-Host ""
+
     $sslPath = Join-Path $PSScriptRoot "ssl-setup.sh"
     if (-not (Test-Path $sslPath)) {
         Write-Fail "ssl-setup.sh nao encontrado em: $PSScriptRoot"
@@ -819,7 +829,8 @@ function Step-SslSetup {
     if ($LASTEXITCODE -ne 0) { Write-Fail "scp falhou."; exit 1 }
 
     Write-Info "Executando ssl-setup.sh na VPS (pode levar 1-2 minutos)..."
-    $sshCmd = "chmod +x $tmp && bash $tmp; rc=`$?; rm -f $tmp; exit `$rc"
+    # E-mail passado como argumento — sem read interativo no SSH
+    $sshCmd = "chmod +x $tmp && bash $tmp '$leEmail'; rc=`$?; rm -f $tmp; exit `$rc"
     ssh -t @sshBase $sshCmd
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "ssl-setup.sh falhou (exit $LASTEXITCODE)"

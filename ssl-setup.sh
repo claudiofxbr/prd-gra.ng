@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
 # ssl-setup.sh - Gera certificado Let's Encrypt para xavierbr-vps.tech
 #
-# Execute na VPS como root:
-#   bash /tmp/ssl-setup.sh
+# Uso: bash ssl-setup.sh EMAIL
+#   EMAIL: e-mail para registro no Let's Encrypt (obrigatorio)
 #
 # Pre-requisitos:
 #   1. DNS registro A de xavierbr-vps.tech apontando para o IP desta VPS
 #   2. Porta 80 livre (containers parados ou nginx parado)
 #   3. certbot instalado (apt-get install -y certbot)
 set -euo pipefail
+
+# E-mail passado como argumento — sem read interativo (compativel com SSH nao-TTY)
+LE_EMAIL="${1:-}"
+if [[ -z "$LE_EMAIL" ]]; then
+  echo "ERRO: informe o e-mail como argumento."
+  echo "Uso: bash ssl-setup.sh SEU@EMAIL.COM"
+  exit 1
+fi
+echo "==> E-mail Let's Encrypt: $LE_EMAIL"
 
 DOMAIN="xavierbr-vps.tech"
 APP_DIR="/opt/prd-gra"
@@ -49,17 +58,7 @@ if ss -tlnp 2>/dev/null | grep -q ':80 ' || netstat -tlnp 2>/dev/null | grep -q 
 fi
 
 # ──────────────────────────────────────────────────────────────
-# 3. Coletar e-mail
-# ──────────────────────────────────────────────────────────────
-echo ""
-read -r -p "Informe seu e-mail para o Let's Encrypt (ex: claudio.xavier@gmail.com): " LE_EMAIL </dev/tty
-if [[ -z "$LE_EMAIL" ]]; then
-  echo "ERRO: e-mail obrigatorio."
-  exit 1
-fi
-
-# ──────────────────────────────────────────────────────────────
-# 4. Emitir certificado
+# 3. Emitir certificado
 # ──────────────────────────────────────────────────────────────
 echo ""
 echo "==> Emitindo certificado para $DOMAIN..."
