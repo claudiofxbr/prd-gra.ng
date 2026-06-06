@@ -794,12 +794,28 @@ function Step-Bootstrap {
 
     Write-Info "Enviando e executando vps-bootstrap.sh na VPS..."
     $tmp     = "/tmp/bootstrap-$([System.IO.Path]::GetRandomFileName().Replace('.',''))"
-    $sshArgs = @(
+    $sshBase = @(
         "-i", $script:Config.SshKeyPath,
         "-o", "StrictHostKeyChecking=no",
         "$($script:Config.VpsUser)@$($script:Config.VpsHost)"
     )
-    Get-Content $bsPath -Raw | ssh @sshArgs "cat > $tmp && chmod +x $tmp && bash $tmp; rc=\$?; rm -f $tmp; exit \$rc"
+
+    # 1. Copiar o script via scp (sem ocupar stdin)
+    $scpArgs = @(
+        "-i", $script:Config.SshKeyPath,
+        "-o", "StrictHostKeyChecking=no",
+        $bsPath,
+        "$($script:Config.VpsUser)@$($script:Config.VpsHost):$tmp"
+    )
+    scp @scpArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "scp falhou ao copiar vps-bootstrap.sh"
+        exit 1
+    }
+
+    # 2. Executar com -t (pseudo-TTY) para que o bash remoto leia prompts do terminal do usuario
+    $sshCmd = 'chmod +x TMP_PATH && bash TMP_PATH; rc=$?; rm -f TMP_PATH; exit $rc' -replace 'TMP_PATH', $tmp
+    ssh -t @sshBase $sshCmd
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Bootstrap falhou (exit $LASTEXITCODE)"
         exit 1

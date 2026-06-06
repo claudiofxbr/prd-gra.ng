@@ -106,7 +106,7 @@ echo "    PRE-REQUISITO: o registro A do DNS de $DOMAIN"
 echo "    deve apontar para o IP desta VPS antes de continuar."
 echo "    Porta 80 deve estar LIVRE (nginx ainda nao esta rodando neste ponto)."
 echo ""
-read -r -p "    O DNS ja esta propagado e a porta 80 esta livre? (s/N) " dns_ok
+read -r -p "    O DNS ja esta propagado e a porta 80 esta livre? (s/N) " dns_ok </dev/tty
 if [[ ! "$dns_ok" =~ ^[sS]$ ]]; then
   echo "    Pulando emissao do certificado. Execute manualmente quando o DNS propagar:"
   echo "      certbot certonly --standalone -d $DOMAIN --agree-tos -m SEU@EMAIL.COM"
@@ -116,7 +116,7 @@ if [[ ! "$dns_ok" =~ ^[sS]$ ]]; then
   echo "      cp -rL /etc/letsencrypt/. \"\$CERT_VOLUME/\""
   echo ""
 else
-  read -r -p "    Informe seu e-mail para o Let's Encrypt: " le_email
+  read -r -p "    Informe seu e-mail para o Let's Encrypt: " le_email </dev/tty
 
   # Garantir que porta 80 esteja livre antes de usar standalone
   if ss -tlnp | grep -q ':80 '; then
