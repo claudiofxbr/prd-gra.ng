@@ -1,17 +1,23 @@
 package ng.prdgra;
 
+import ng.prdgra.config.SecurityConfig;
 import ng.prdgra.dto.PageResponse;
 import ng.prdgra.dto.PrdRequest;
 import ng.prdgra.dto.PrdResponse;
+import ng.prdgra.repository.UserRepository;
+import ng.prdgra.security.JwtAuthFilter;
+import ng.prdgra.security.JwtService;
+import ng.prdgra.security.RateLimitFilter;
 import ng.prdgra.service.PrdService;
+import ng.prdgra.controller.PrdController;
+import ng.prdgra.controller.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -28,16 +34,31 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
+// @WebMvcTest carrega apenas a camada web — sem JPA, DataSource, Flyway ou Caffeine.
+// Todos os beans de infraestrutura sao mockados explicitamente abaixo.
+@WebMvcTest(controllers = { PrdController.class, GlobalExceptionHandler.class })
+@Import({ SecurityConfig.class, JwtAuthFilter.class, RateLimitFilter.class })
 class PrdControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
+    // Servicos de negocio
     @MockBean
     private PrdService prdService;
+
+    // Dependencias da camada de seguranca (nao carregadas pelo @WebMvcTest)
+    @MockBean
+    private JwtService jwtService;
+
+    @MockBean
+    private UserRepository userRepository;
+
+    // CacheManager necessario para PrdService (mesmo mockado, SecurityConfig o referencia via contexto)
+    @MockBean
+    private org.springframework.cache.CacheManager cacheManager;
+
+    // ObjectMapper ja e provido pelo @WebMvcTest — nao precisa ser mockado
 
     private PrdResponse samplePrd(UUID id) {
         return new PrdResponse(id, "My PRD", "desc",
@@ -56,7 +77,7 @@ class PrdControllerTest {
         when(prdService.listByUser(eq("test@example.com"), anyInt(), anyInt()))
                 .thenReturn(singlePageResponse(samplePrd(id)));
 
-        mockMvc.perform(get("/api/prds"))
+        mockMvc.perform(get("/prds"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].title").value("My PRD"));
     }
@@ -67,7 +88,7 @@ class PrdControllerTest {
         UUID id = UUID.randomUUID();
         when(prdService.create(any(PrdRequest.class), eq("test@example.com"))).thenReturn(samplePrd(id));
 
-        mockMvc.perform(post("/api/prds")
+        mockMvc.perform(post("/prds")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"New PRD","description":"desc",
@@ -80,7 +101,7 @@ class PrdControllerTest {
     @Test
     @WithMockUser(username = "test@example.com")
     void createPrd_missingTitle_returns400() throws Exception {
-        mockMvc.perform(post("/api/prds")
+        mockMvc.perform(post("/prds")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"description":"desc","stack":["Java"],"objectives":["Obj"]}
@@ -94,7 +115,7 @@ class PrdControllerTest {
         UUID id = UUID.randomUUID();
         when(prdService.findById(id, "test@example.com")).thenReturn(samplePrd(id));
 
-        mockMvc.perform(get("/api/prds/" + id))
+        mockMvc.perform(get("/prds/" + id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()));
     }
@@ -106,7 +127,7 @@ class PrdControllerTest {
         when(prdService.findById(id, "test@example.com"))
                 .thenThrow(new NoSuchElementException("PRD not found"));
 
-        mockMvc.perform(get("/api/prds/" + id))
+        mockMvc.perform(get("/prds/" + id))
                 .andExpect(status().isNotFound());
     }
 
@@ -119,7 +140,7 @@ class PrdControllerTest {
                 Instant.now(), Instant.now());
         when(prdService.update(eq(id), any(PrdRequest.class), eq("test@example.com"))).thenReturn(updated);
 
-        mockMvc.perform(put("/api/prds/" + id)
+        mockMvc.perform(put("/prds/" + id)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"Updated","description":"new desc",
@@ -136,7 +157,7 @@ class PrdControllerTest {
         UUID id = UUID.randomUUID();
         doNothing().when(prdService).delete(id, "test@example.com");
 
-        mockMvc.perform(delete("/api/prds/" + id))
+        mockMvc.perform(delete("/prds/" + id))
                 .andExpect(status().isNoContent());
     }
 
@@ -147,13 +168,13 @@ class PrdControllerTest {
         doThrow(new NoSuchElementException("PRD not found"))
                 .when(prdService).delete(id, "test@example.com");
 
-        mockMvc.perform(delete("/api/prds/" + id))
+        mockMvc.perform(delete("/prds/" + id))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void listPrds_unauthenticated_returns401() throws Exception {
-        mockMvc.perform(get("/api/prds"))
+        mockMvc.perform(get("/prds"))
                 .andExpect(status().isUnauthorized());
     }
 }
