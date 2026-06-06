@@ -1,0 +1,47 @@
+# Perfil carregado por @ActiveProfiles("test") nos dois testes.
+#
+# PrdControllerTest: usa @MockBean PrdService — nunca faz queries reais.
+#   O pool HikariCP e criado de forma lazy (initialization-fail-timeout: -1),
+#   entao o contexto sobe sem banco disponivel.
+#
+# PrdIntegrationTest: @DynamicPropertySource sobrescreve url/username/password
+#   com os valores do PostgreSQLContainer (Testcontainers) — Flyway roda no
+#   banco real do container, nao no placeholder abaixo.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/testdb_placeholder
+    driver-class-name: org.postgresql.Driver
+    username: test
+    password: test
+    hikari:
+      connection-timeout: 5000
+      maximum-pool-size: 2
+      # -1 = nao valida conexao no startup — o PrdControllerTest nunca usa o pool
+      initialization-fail-timeout: -1
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+  flyway:
+    # Flyway desabilitado no perfil test: o PrdControllerTest nao tem banco real.
+    # O PrdIntegrationTest habilita Flyway via @DynamicPropertySource apos
+    # sobrescrever a URL — mas como flyway.enabled=false aqui e o
+    # @DynamicPropertySource nao altera esta chave, o Flyway permanece desligado.
+    # O schema e criado pelo ddl-auto do Hibernate no Integration Test.
+    enabled: false
+  # Inicializacao lazy evita que beans de infraestrutura (DataSourceHealthContributor
+  # etc.) tentem conectar ao banco durante o boot do PrdControllerTest.
+  main:
+    lazy-initialization: true
+
+app:
+  jwt:
+    secret: dGVzdC1zZWNyZXQtcGFyYS1jaS1taW5pbW8tMzItY2hhcmFjdGVycw==
+    expiration-ms: 900000
+  refresh-token:
+    expiration-days: 30
+  cors:
+    allowed-origins: http://localhost:3000
+  rate-limit:
+    trusted-proxy: 127.0.0.1
+    max-requests: 100
