@@ -11,6 +11,7 @@ param(
     [switch]$SkipPush,
     [switch]$VpsOnly,
     [switch]$Bootstrap,
+    [switch]$SslSetup,
     [string]$ConfigFile = ".deploy-config.json"
 )
 
@@ -774,6 +775,61 @@ function Step-Report {
 }
 
 # =============================================================================
+# SSL SETUP
+# =============================================================================
+
+function Step-SslSetup {
+    Write-Host ""
+    Write-Host "  ${C_BOLD}${C_CYAN}+--------------------------------------------------+${C_RESET}"
+    Write-Host "  ${C_BOLD}${C_CYAN}|         CONFIGURACAO DE CERTIFICADO SSL          |${C_RESET}"
+    Write-Host "  ${C_BOLD}${C_CYAN}+--------------------------------------------------+${C_RESET}"
+    Write-Host ""
+    Write-Info "Gera certificado Let's Encrypt via Certbot standalone."
+    Write-Info "Pre-requisito: DNS A de $($script:Config.Domain) apontando para a VPS."
+    Write-Host ""
+
+    $sslPath = Join-Path $PSScriptRoot "ssl-setup.sh"
+    if (-not (Test-Path $sslPath)) {
+        Write-Fail "ssl-setup.sh nao encontrado em: $PSScriptRoot"
+        exit 1
+    }
+
+    if (-not (Test-VpsReachable)) {
+        Write-Fail "Nao foi possivel conectar via SSH na VPS."
+        Write-Info "Verifique a chave SSH e o IP da VPS."
+        exit 1
+    }
+    Write-Ok "SSH conectado: $($script:Config.VpsUser)@$($script:Config.VpsHost)"
+
+    $tmp = "/tmp/ssl-setup-$([System.IO.Path]::GetRandomFileName().Replace('.',''))"
+    $sshBase = @(
+        "-i", $script:Config.SshKeyPath,
+        "-o", "StrictHostKeyChecking=no",
+        "$($script:Config.VpsUser)@$($script:Config.VpsHost)"
+    )
+    $scpArgs = @(
+        "-i", $script:Config.SshKeyPath,
+        "-o", "StrictHostKeyChecking=no",
+        $sslPath,
+        "$($script:Config.VpsUser)@$($script:Config.VpsHost):$tmp"
+    )
+
+    Write-Info "Enviando ssl-setup.sh para a VPS..."
+    scp @scpArgs
+    if ($LASTEXITCODE -ne 0) { Write-Fail "scp falhou."; exit 1 }
+
+    Write-Info "Executando ssl-setup.sh na VPS (pode levar 1-2 minutos)..."
+    $sshCmd = "chmod +x $tmp && bash $tmp; rc=`$?; rm -f $tmp; exit `$rc"
+    ssh -t @sshBase $sshCmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "ssl-setup.sh falhou (exit $LASTEXITCODE)"
+        exit 1
+    }
+    Write-Ok "Certificado SSL configurado com sucesso."
+    Write-Info "App disponivel em: https://$($script:Config.Domain)/prd-gra.ng/"
+}
+
+# =============================================================================
 # BOOTSTRAP
 # =============================================================================
 
@@ -838,6 +894,7 @@ Write-Host ""
 Write-Host "  ${C_DIM}Modos disponiveis:${C_RESET}"
 Write-Host "    ${C_CYAN}.\deploy.ps1${C_RESET}             Deploy completo"
 Write-Host "    ${C_CYAN}.\deploy.ps1 -Bootstrap${C_RESET}  Configura a VPS do zero (1a vez)"
+Write-Host "    ${C_CYAN}.\deploy.ps1 -SslSetup${C_RESET}   Gera/renova certificado SSL na VPS"
 Write-Host "    ${C_CYAN}.\deploy.ps1 -VpsOnly${C_RESET}    So valida a VPS"
 Write-Host "    ${C_CYAN}.\deploy.ps1 -SkipPush${C_RESET}   Pula git push"
 Write-Host ""
@@ -864,6 +921,11 @@ if (-not (Read-YesNo "Confirmar e iniciar deploy?")) {
 # Execucao
 if ($Bootstrap) {
     Step-Bootstrap
+    exit 0
+}
+
+if ($SslSetup) {
+    Step-SslSetup
     exit 0
 }
 
