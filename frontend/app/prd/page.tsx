@@ -9,21 +9,32 @@ import PrdCard from '@/components/PrdCard'
 import Navbar from '@/components/Navbar'
 import type { PrdResponse } from '@/types'
 
+const PAGE_SIZE = 20
+
 export default function PrdListPage() {
   const router = useRouter()
-  const [prds, setPrds]             = useState<PrdResponse[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState('')
+  const [prds, setPrds]               = useState<PrdResponse[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState('')
   const [deleteError, setDeleteError] = useState('')
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId]   = useState<string | null>(null)
+  const [page, setPage]               = useState(0)
+  const [totalPages, setTotalPages]   = useState(1)
+  const [total, setTotal]             = useState(0)
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return }
     let cancelled = false
+    setLoading(true)
+    setError('')
     ;(async () => {
       try {
-        const res = await api.prds.list()
-        if (!cancelled) setPrds(res?.content ?? [])
+        const res = await api.prds.list(page, PAGE_SIZE)
+        if (!cancelled) {
+          setPrds(res?.content ?? [])
+          setTotalPages(res?.totalPages ?? 1)
+          setTotal(res?.totalElements ?? 0)
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Erro ao carregar PRDs')
       } finally {
@@ -31,14 +42,20 @@ export default function PrdListPage() {
       }
     })()
     return () => { cancelled = true }
-  }, [router])
+  }, [router, page])
 
   async function handleDelete(id: string) {
     setDeleteError('')
     setDeletingId(id)
     try {
       await api.prds.delete(id)
-      setPrds((prev) => prev.filter((p) => p.id !== id))
+      const newPrds = prds.filter((p) => p.id !== id)
+      setPrds(newPrds)
+      setTotal((t) => t - 1)
+      // Se a página ficou vazia e não é a primeira, volta uma página
+      if (newPrds.length === 0 && page > 0) {
+        setPage((p) => p - 1)
+      }
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : 'Erro ao excluir')
     } finally {
@@ -57,7 +74,7 @@ export default function PrdListPage() {
             </h1>
             {!loading && (
               <p className="text-sm mt-0.5" style={{ color: 'var(--content-muted)' }}>
-                {prds.length} documento{prds.length !== 1 ? 's' : ''}
+                {total} documento{total !== 1 ? 's' : ''}
               </p>
             )}
           </div>
@@ -90,6 +107,28 @@ export default function PrdListPage() {
             <PrdCard key={prd.id} prd={prd} onDelete={handleDelete} deleting={deletingId === prd.id} />
           ))}
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 mt-8">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0 || loading}
+              className="btn-ghost px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ← Anterior
+            </button>
+            <span className="text-sm" style={{ color: 'var(--content-muted)' }}>
+              Página {page + 1} de {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1 || loading}
+              className="btn-ghost px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Próxima →
+            </button>
+          </div>
+        )}
       </main>
     </>
   )

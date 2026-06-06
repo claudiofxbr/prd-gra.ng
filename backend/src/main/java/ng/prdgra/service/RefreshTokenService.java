@@ -1,10 +1,12 @@
 package ng.prdgra.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import ng.prdgra.model.RefreshToken;
 import ng.prdgra.model.User;
 import ng.prdgra.repository.RefreshTokenRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ import java.util.HexFormat;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RefreshTokenService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -71,6 +74,14 @@ public class RefreshTokenService {
     @Transactional
     public void revokeAll(User user) {
         refreshTokenRepository.revokeAllByUserId(user.getId());
+    }
+
+    // Roda diariamente às 03:00 UTC — remove tokens expirados e revogados do banco.
+    @Scheduled(cron = "0 0 3 * * *")
+    @Transactional
+    public void purgeExpiredTokens() {
+        int deleted = refreshTokenRepository.deleteExpiredAndRevoked(Instant.now());
+        if (deleted > 0) log.info("Refresh tokens purgados: {}", deleted);
     }
 
     private static String sha256Hex(String input) {

@@ -164,7 +164,8 @@ function Request-Secrets {
         $jwtSecret = $jwtInput
     }
 
-    $apiDefault  = "https://" + $Cfg.Domain + "/api"
+    # API URL: caminho relativo /api funciona quando nginx serve tudo no mesmo dominio
+    $apiDefault  = "/api"
     $corsDefault = "https://" + $Cfg.Domain
     $apiUrl      = Read-Input "NEXT_PUBLIC_API_URL"  $apiDefault
     $corsUrl     = Read-Input "CORS_ALLOWED_ORIGINS" $corsDefault
@@ -615,18 +616,18 @@ function Step-SmokeTest {
         exit 1
     }
 
-    # Frontend
-    Write-Info "Testando frontend..."
+    # Frontend — acessivel sob o sub-path /prd-gra.ng/
+    Write-Info "Testando frontend em https://$domain/prd-gra.ng/ ..."
     try {
-        $r = Invoke-WebRequest -Uri "https://$domain" `
+        $r = Invoke-WebRequest -Uri "https://$domain/prd-gra.ng/" `
                  -TimeoutSec 15 -SkipCertificateCheck -ErrorAction Stop
         if ($r.Content -match "<html") {
-            Write-Ok "Frontend: OK (HTTP $($r.StatusCode))"
+            Write-Ok "Frontend: OK (HTTP $($r.StatusCode)) em /prd-gra.ng/"
         } else {
             Write-Fail "Frontend retornou resposta inesperada."
         }
     } catch {
-        Write-Fail "Frontend inacessivel: $_"
+        Write-Fail "Frontend inacessivel em /prd-gra.ng/: $_"
         exit 1
     }
 
@@ -738,7 +739,7 @@ function Step-Report {
     Write-Host "  ${C_BOLD}${C_GREEN}+--------------------------------------------------+${C_RESET}"
     Write-Host ""
     Write-Host "  Aplicacao  : PRD-GRA.NG"
-    Write-Host "  Dominio    : ${C_CYAN}https://$domain${C_RESET}"
+    Write-Host "  Dominio    : ${C_CYAN}https://$domain/prd-gra.ng/${C_RESET}"
     Write-Host "  Timestamp  : $ts"
     if ($script:CommitSha) {
         $sha = $script:CommitSha.Substring(0, 12)
@@ -747,7 +748,7 @@ function Step-Report {
     }
     Write-Host ""
     Write-Host "  ${C_BOLD}Endpoints:${C_RESET}"
-    Write-Host "    Frontend -> https://$domain"
+    Write-Host "    Frontend -> https://$domain/prd-gra.ng/"
     Write-Host "    API      -> https://$domain/api"
     Write-Host "    Health   -> https://$domain/api/actuator/health"
     Write-Host ""

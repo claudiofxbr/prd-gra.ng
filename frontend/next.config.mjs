@@ -58,8 +58,14 @@ const securityHeaders = [
   },
 ]
 
+const BASE_PATH = '/prd-gra.ng'
+
 const nextConfig = {
   output: isDev ? undefined : 'standalone',
+  basePath: BASE_PATH,
+  env: {
+    NEXT_PUBLIC_BASE_PATH: BASE_PATH,
+  },
   // typedRoutes promovido para estavel no Next.js 15 — saiu do bloco experimental
   ...(isDev ? {} : { typedRoutes: true }),
   async headers() {

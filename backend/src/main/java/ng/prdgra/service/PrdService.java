@@ -32,7 +32,7 @@ public class PrdService {
     private final UserRepository userRepository;
     private final CacheManager cacheManager;
 
-    @Cacheable(value = "prds", key = "#userEmail + '-' + #page + '-' + #size")
+    @Cacheable(value = "prds", key = "#userEmail + '|' + #page + '|' + #size")
     public PageResponse<PrdResponse> listByUser(String userEmail, int page, int size) {
         int safeSize = Math.min(size, MAX_PAGE_SIZE);
         return PageResponse.from(
@@ -107,7 +107,7 @@ public class PrdService {
         var springCache = cacheManager.getCache("prds");
         if (springCache instanceof CaffeineCache caffeineCache) {
             Cache<Object, Object> nativeCache = caffeineCache.getNativeCache();
-            nativeCache.asMap().keySet().removeIf(k -> k instanceof String s && s.startsWith(userEmail + "-"));
+            nativeCache.asMap().keySet().removeIf(k -> k instanceof String s && s.startsWith(userEmail + "|"));
         }
     }
 }

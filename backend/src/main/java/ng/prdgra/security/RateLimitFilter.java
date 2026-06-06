@@ -26,8 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private static final int  MAX_REQUESTS = 10;
     private static final long WINDOW_MS    = 60_000L;
+
+    @Value("${app.rate-limit.max-requests:10}")
+    private int maxRequests;
 
     private final ObjectMapper objectMapper;
     private final ConcurrentHashMap<String, WindowEntry> windows = new ConcurrentHashMap<>();
@@ -80,7 +82,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return existing;
         });
 
-        if (entry.count.get() > MAX_REQUESTS) {
+        if (entry.count.get() > maxRequests) {
             log.warn("Rate limit atingido para IP: {}", ip);
             sendTooManyRequests(response);
             return;
@@ -109,7 +111,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         long now = System.currentTimeMillis();
         int removed = 0;
         for (var it = windows.entrySet().iterator(); it.hasNext(); ) {
-            if (now - it.next().getValue().windowStart > WINDOW_MS * 5) {
+            if (now - it.next().getValue().windowStart > WINDOW_MS) {
                 it.remove();
                 removed++;
             }

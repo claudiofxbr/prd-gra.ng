@@ -6,10 +6,10 @@ import { z } from 'zod'
 import type { PrdRequest, PrdResponse, PrdStatus } from '@/types'
 
 const schema = z.object({
-  title:       z.string().min(1, 'Título obrigatório').max(255),
-  description: z.string().optional(),
-  stack:       z.array(z.object({ value: z.string().min(1) })).min(1, 'Adicione ao menos uma tecnologia'),
-  objectives:  z.array(z.object({ value: z.string().min(1) })).min(1, 'Adicione ao menos um objetivo'),
+  title:       z.string().trim().min(1, 'Título obrigatório').max(255),
+  description: z.string().trim().optional(),
+  stack:       z.array(z.object({ value: z.string().trim().min(1, 'Tecnologia não pode ser vazia') })).min(1, 'Adicione ao menos uma tecnologia'),
+  objectives:  z.array(z.object({ value: z.string().trim().min(1, 'Objetivo não pode ser vazio') })).min(1, 'Adicione ao menos um objetivo'),
   status:      z.enum(['DRAFT', 'REVIEW', 'APPROVED']).optional(),
 })
 

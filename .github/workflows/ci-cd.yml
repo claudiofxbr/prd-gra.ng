@@ -177,7 +177,7 @@ jobs:
             docker compose --env-file /opt/prd-gra/.env up -d --remove-orphans
 
             # Smoke test: aguardar backend via health endpoint interno (sem depender de TLS/nginx)
-            # Usa curl direto no container para isolar falhas de TLS/DNS
+            # Usa wget direto no container para isolar falhas de TLS/DNS
             echo "Aguardando backend iniciar (max 60s)..."
             SUCCESS=false
             for i in $(seq 1 20); do
@@ -192,6 +192,24 @@ jobs:
               echo "Tentativa $i: $STATUS — aguardando 3s..."
               sleep 3
             done
+
+            # Smoke test do frontend: verifica se o sub-path /prd-gra.ng/ responde
+            echo "Verificando frontend no sub-path /prd-gra.ng/ ..."
+            FRONT_OK=false
+            for i in $(seq 1 10); do
+              HTTP_CODE=$(wget -qO- --server-response http://localhost:3000/prd-gra.ng/ 2>&1 \
+                | grep "HTTP/" | tail -1 | awk '{print $2}' || echo "")
+              if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "308" ]; then
+                echo "Frontend OK (HTTP $HTTP_CODE) na tentativa $i."
+                FRONT_OK=true
+                break
+              fi
+              echo "Tentativa $i: HTTP $HTTP_CODE — aguardando 3s..."
+              sleep 3
+            done
+            if [ "$FRONT_OK" = "false" ]; then
+              echo "Aviso: frontend nao respondeu no sub-path — verifique os logs do container frontend."
+            fi
 
             if [ "$SUCCESS" = "false" ]; then
               echo "Smoke test FALHOU. Iniciando rollback..."

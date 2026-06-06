@@ -59,7 +59,10 @@ async function apiFetch<T>(path: string, options?: RequestInit, isRetry = false)
     if (typeof window !== 'undefined') {
       const { clearAuth } = await import('@/lib/auth')
       clearAuth()
-      window.location.href = '/login'
+      // basePath '/prd-gra.ng' e aplicado pelo Next.js no lado do servidor,
+      // mas window.location.href e navegacao direta — precisa do prefixo completo.
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
+      window.location.href = `${base}/login`
     }
     return undefined as T
   }
