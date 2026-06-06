@@ -60,9 +60,8 @@ const securityHeaders = [
 
 const nextConfig = {
   output: isDev ? undefined : 'standalone',
-  experimental: {
-    typedRoutes: !isDev,
-  },
+  // typedRoutes promovido para estavel no Next.js 15 — saiu do bloco experimental
+  ...(isDev ? {} : { typedRoutes: true }),
   async headers() {
     return [
       {
