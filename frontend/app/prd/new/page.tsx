@@ -22,7 +22,8 @@ export default function NewPrdPage() {
     setLoading(true)
     try {
       const prd = await api.prds.create(data)
-      router.push(`/prd/${prd.id}`)
+      if (prd?.id) router.push(`/prd/${prd.id}`)
+      else router.push('/prd')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao criar PRD')
     } finally {

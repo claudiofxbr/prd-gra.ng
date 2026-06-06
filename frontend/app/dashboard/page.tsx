@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { Route } from 'next'
@@ -120,16 +120,24 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return }
-    api.prds.list()
-      .then((res) => setPrds(res?.content ?? []))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+    let cancelled = false
+    ;(async () => {
+      try {
+        const all = await api.prds.listAll()
+        if (!cancelled) setPrds(all)
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Erro ao carregar dados')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
   }, [router])
 
-  const counts  = calcStatusCounts(prds)
-  const total   = prds.length
-  const topStack = calcTopStack(prds)
-  const recent   = calcRecentActivity(prds)
+  const total    = prds.length
+  const counts   = useMemo(() => calcStatusCounts(prds), [prds])
+  const topStack = useMemo(() => calcTopStack(prds), [prds])
+  const recent   = useMemo(() => calcRecentActivity(prds), [prds])
   const maxStack = topStack[0]?.count ?? 1
 
   return (

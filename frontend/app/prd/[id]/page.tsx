@@ -20,10 +20,18 @@ export default function EditPrdPage() {
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return }
     if (!id) return
-    api.prds.get(id)
-      .then(setPrd)
-      .catch((e: Error) => setFetchError(e.message))
-      .finally(() => setFetching(false))
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.prds.get(id)
+        if (!cancelled && res) setPrd(res)
+      } catch (e) {
+        if (!cancelled) setFetchError(e instanceof Error ? e.message : 'Erro ao carregar PRD')
+      } finally {
+        if (!cancelled) setFetching(false)
+      }
+    })()
+    return () => { cancelled = true }
   }, [id, router])
 
   async function handleSubmit(data: PrdRequest) {

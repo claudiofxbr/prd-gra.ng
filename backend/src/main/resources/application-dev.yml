@@ -1,0 +1,8 @@
+app:
+  rate-limit:
+    enabled: false   # Desabilitado em dev para nao bloquear testes e uso local
+
+logging:
+  level:
+    ng.prdgra: DEBUG
+    org.springframework.security: DEBUG

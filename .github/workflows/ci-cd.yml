@@ -8,6 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # GHCR requer lowercase — github.repository ja e lowercase por padrao
   IMAGE_BACKEND:  ghcr.io/${{ github.repository }}/backend
   IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/frontend
   IMAGE_NGINX:    ghcr.io/${{ github.repository }}/nginx
@@ -54,7 +55,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: backend/target/surefire-reports/
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
 
   # ─────────────────────────────────────────────────────────────
   build-push:
@@ -128,6 +131,8 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
           DOMAIN: ${{ secrets.DOMAIN }}
+          TRUSTED_PROXY_IP: ${{ secrets.TRUSTED_PROXY_IP }}
+          # GHCR_REPO em lowercase (obrigatorio pelo GHCR)
           GHCR_REPO: ghcr.io/${{ github.repository }}
           IMAGE_TAG: ${{ github.sha }}
           DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -136,32 +141,34 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: DATABASE_URL,JWT_SECRET,NEXT_PUBLIC_API_URL,CORS_ALLOWED_ORIGINS,DOMAIN,GHCR_REPO,IMAGE_TAG,DEPLOY_TOKEN,DEPLOY_ACTOR
+          envs: DATABASE_URL,JWT_SECRET,NEXT_PUBLIC_API_URL,CORS_ALLOWED_ORIGINS,DOMAIN,TRUSTED_PROXY_IP,GHCR_REPO,IMAGE_TAG,DEPLOY_TOKEN,DEPLOY_ACTOR
           script: |
             set -euo pipefail
             cd /opt/prd-gra
 
-            # Gravar .env via printf — evita problemas de indentação de heredoc no YAML.
-            # Os valores chegam como variáveis de ambiente via "envs:" acima,
-            # expandidas pelo GitHub Actions antes do envio SSH.
-            printf 'DATABASE_URL=%s\nJWT_SECRET=%s\nNEXT_PUBLIC_API_URL=%s\nCORS_ALLOWED_ORIGINS=%s\nDOMAIN=%s\nGHCR_REPO=%s\nIMAGE_TAG=%s\n' \
+            # Gravar .env via printf — evita problemas de indentacao de heredoc no YAML
+            printf 'DATABASE_URL=%s\nJWT_SECRET=%s\nNEXT_PUBLIC_API_URL=%s\nCORS_ALLOWED_ORIGINS=%s\nDOMAIN=%s\nTRUSTED_PROXY_IP=%s\nGHCR_REPO=%s\nIMAGE_TAG=%s\n' \
               "$DATABASE_URL" \
               "$JWT_SECRET" \
               "$NEXT_PUBLIC_API_URL" \
               "$CORS_ALLOWED_ORIGINS" \
               "$DOMAIN" \
+              "$TRUSTED_PROXY_IP" \
               "$GHCR_REPO" \
               "$IMAGE_TAG" \
               > /opt/prd-gra/.env
             chmod 600 /opt/prd-gra/.env
 
-            # Login no GHCR (usa DEPLOY_TOKEN/DEPLOY_ACTOR passados via envs:)
+            # Login no GHCR
             echo "$DEPLOY_TOKEN" | docker login ghcr.io -u "$DEPLOY_ACTOR" --password-stdin
 
-            # Registrar tag da imagem atual do backend para rollback
-            PREVIOUS_TAG=$(docker inspect \
-              --format='{{index .Config.Image}}' \
-              "$(docker compose ps -q backend 2>/dev/null || true)" 2>/dev/null || echo "")
+            # Registrar imagem atual do backend para rollback (trata primeiro deploy sem container)
+            BACKEND_CID=$(docker compose ps -q backend 2>/dev/null || true)
+            if [ -n "$BACKEND_CID" ]; then
+              PREVIOUS_TAG=$(docker inspect --format='{{index .Config.Image}}' "$BACKEND_CID" 2>/dev/null || echo "")
+            else
+              PREVIOUS_TAG=""
+            fi
 
             # Pull das novas imagens
             docker compose --env-file /opt/prd-gra/.env pull
@@ -169,35 +176,42 @@ jobs:
             # Rolling deploy
             docker compose --env-file /opt/prd-gra/.env up -d --remove-orphans
 
-            # Smoke test via HTTPS com tolerância ao certificado self-signed do localhost
+            # Smoke test: aguardar backend via health endpoint interno (sem depender de TLS/nginx)
+            # Usa curl direto no container para isolar falhas de TLS/DNS
             echo "Aguardando backend iniciar (max 60s)..."
             SUCCESS=false
             for i in $(seq 1 20); do
-              STATUS=$(curl -sk -o /dev/null -w "%{http_code}" \
-                https://localhost/api/actuator/health 2>/dev/null || echo "000")
-              if [ "$STATUS" = "200" ]; then
-                echo "Smoke test aprovado na tentativa $i (HTTP 200)."
+              STATUS=$(docker compose exec -T backend \
+                wget -qO- http://localhost:8080/api/actuator/health 2>/dev/null \
+                | grep -o '"status":"[^"]*"' | head -1 || echo "")
+              if echo "$STATUS" | grep -q '"UP"'; then
+                echo "Smoke test aprovado na tentativa $i (backend UP)."
                 SUCCESS=true
                 break
               fi
-              echo "Tentativa $i: HTTP $STATUS — aguardando 3s..."
+              echo "Tentativa $i: $STATUS — aguardando 3s..."
               sleep 3
             done
 
             if [ "$SUCCESS" = "false" ]; then
               echo "Smoke test FALHOU. Iniciando rollback..."
               if [ -n "$PREVIOUS_TAG" ]; then
-                PREV_SHA=$(echo "$PREVIOUS_TAG" | grep -oP '(?<=:)[a-f0-9]+$' || echo "latest")
-                sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREV_SHA}/" /opt/prd-gra/.env
-                docker compose --env-file /opt/prd-gra/.env pull
-                docker compose --env-file /opt/prd-gra/.env up -d --remove-orphans
-                echo "Rollback para ${PREV_SHA} concluido."
+                # Extrair SHA com sed (portavel — nao usa grep -oP/PCRE)
+                PREV_SHA=$(echo "$PREVIOUS_TAG" | sed 's/.*:\([a-f0-9]*\)$/\1/')
+                if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" != "$PREVIOUS_TAG" ]; then
+                  sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREV_SHA}/" /opt/prd-gra/.env
+                  docker compose --env-file /opt/prd-gra/.env pull
+                  docker compose --env-file /opt/prd-gra/.env up -d --remove-orphans
+                  echo "Rollback para ${PREV_SHA} concluido."
+                else
+                  echo "SHA anterior nao identificado em: $PREVIOUS_TAG"
+                fi
               else
-                echo "Nenhuma versao anterior disponivel para rollback."
+                echo "Nenhuma versao anterior disponivel para rollback (primeiro deploy)."
               fi
               exit 1
             fi
 
-            # Limpeza de imagens antigas (mantém últimas 72h)
+            # Limpeza de imagens antigas (mantém ultimas 72h)
             docker image prune -f --filter "until=72h"
             echo "Deploy concluido: SHA=$IMAGE_TAG"

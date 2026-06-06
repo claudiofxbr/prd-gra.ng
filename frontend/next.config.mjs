@@ -16,34 +16,45 @@ function extractOrigin(urlWithPath) {
 const rawApiUrl  = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api'
 const apiOrigin  = extractOrigin(rawApiUrl)  // "http://localhost:8080"
 
-// Em dev: unsafe-eval necessario para webpack HMR / React Fast Refresh
-// Em prod: removido — webpack usa modulos estaticos sem eval
-const scriptSrc = isDev
-  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-  : "script-src 'self' 'unsafe-inline'"
-
 // connect-src: origem da API + websocket HMR em dev
 const connectSrc = isDev
   ? `connect-src 'self' ${apiOrigin} ws://localhost:3000 wss://localhost:3000`
   : `connect-src 'self' ${apiOrigin}`
 
-const securityHeaders = [
-  { key: 'X-DNS-Prefetch-Control', value: 'on' },
-  { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
-  { key: 'X-Content-Type-Options', value: 'nosniff' },
-  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-  {
-    key: 'Content-Security-Policy',
-    value: [
+// Em dev o CSP omite script-src para não bloquear chunks dinâmicos do webpack HMR
+// e extensões do browser. Em prod aplica-se política restrita.
+const cspDirectives = isDev
+  ? [
       "default-src 'self'",
-      scriptSrc,
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "img-src 'self' data: blob:",
+      connectSrc,
+      "frame-ancestors 'none'",
+    ]
+  : [
+      "default-src 'self'",
+      // 'unsafe-inline' removido: Next.js 14 App Router emite scripts como chunks externos,
+      // não como inline. Se quebrar em prod, adicionar nonce via middleware (ver CLAUDE.md).
+      "script-src 'self'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data:",
       connectSrc,
       "frame-ancestors 'none'",
-    ].join('; '),
+    ]
+
+const securityHeaders = [
+  { key: 'X-DNS-Prefetch-Control', value: 'on' },
+  // DENY é consistente com frame-ancestors 'none' no CSP — SAMEORIGIN contradizia a política.
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  {
+    key: 'Content-Security-Policy',
+    value: cspDirectives.join('; '),
   },
 ]
 

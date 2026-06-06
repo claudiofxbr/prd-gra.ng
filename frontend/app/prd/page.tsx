@@ -19,10 +19,18 @@ export default function PrdListPage() {
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return }
-    api.prds.list()
-      .then((res) => setPrds(res?.content ?? []))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.prds.list()
+        if (!cancelled) setPrds(res?.content ?? [])
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Erro ao carregar PRDs')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
   }, [router])
 
   async function handleDelete(id: string) {

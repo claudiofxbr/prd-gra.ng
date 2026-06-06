@@ -1,6 +1,7 @@
 package ng.prdgra.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -27,14 +29,38 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final int  MAX_REQUESTS = 10;
     private static final long WINDOW_MS    = 60_000L;
 
-    // IP confiável do proxy reverso — apenas este pode setar X-Forwarded-For
-    private static final String TRUSTED_PROXY = "127.0.0.1";
-
     private final ObjectMapper objectMapper;
     private final ConcurrentHashMap<String, WindowEntry> windows = new ConcurrentHashMap<>();
 
+    // Em Docker com nginx no mesmo compose, configure TRUSTED_PROXY_IP com o IP
+    // da rede interna do container nginx (ex: 172.18.0.x).
+    // Use: docker inspect <nginx-container> | grep IPAddress
+    @Value("${app.rate-limit.trusted-proxy:127.0.0.1}")
+    private String trustedProxy;
+
+    // Permite desabilitar o rate limit em perfil dev/test sem alterar a logica de producao.
+    // Configure app.rate-limit.enabled=false em application-dev.yml ou via variavel de ambiente.
+    @Value("${app.rate-limit.enabled:true}")
+    private boolean enabled;
+
+    @PostConstruct
+    void warnIfDefaultProxy() {
+        if (!enabled) {
+            log.warn("RateLimitFilter: DESABILITADO (app.rate-limit.enabled=false). Use apenas em dev/test.");
+            return;
+        }
+        if ("127.0.0.1".equals(trustedProxy)) {
+            log.warn("RateLimitFilter: TRUSTED_PROXY_IP=127.0.0.1 (default). " +
+                     "Em producao com Docker/nginx, defina app.rate-limit.trusted-proxy " +
+                     "com o IP interno do container nginx para que X-Forwarded-For seja lido corretamente.");
+        } else {
+            log.info("RateLimitFilter: trusted proxy configurado para {}", trustedProxy);
+        }
+    }
+
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+        if (!enabled) return true;
         String path = request.getRequestURI();
         return !path.contains("/auth/login") && !path.contains("/auth/register");
     }
@@ -67,7 +93,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     // evitando que atacantes forjem IPs para bypass do rate limit.
     private String resolveClientIp(HttpServletRequest request) {
         String remoteAddr = request.getRemoteAddr();
-        if (TRUSTED_PROXY.equals(remoteAddr)) {
+        if (trustedProxy.equals(remoteAddr)) {
             String forwarded = request.getHeader("X-Forwarded-For");
             if (forwarded != null && !forwarded.isBlank()) {
                 return forwarded.split(",")[0].trim();

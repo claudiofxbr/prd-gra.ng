@@ -1,0 +1,11 @@
+﻿{
+    "GhBranch":  "main",
+    "CiTimeoutMin":  15,
+    "VpsHost":  "69.62.87.38",
+    "Domain":  "xavierbr-vps.tech",
+    "SmokeRetries":  20,
+    "VpsUser":  "root",
+    "GhRepo":  "claudiofxbr/prd-gra.ng",
+    "SshKeyPath":  "C:\\Users\\VeKTI-01\\.ssh\\id_rsa",
+    "AppDir":  "/opt/prd-gra"
+}

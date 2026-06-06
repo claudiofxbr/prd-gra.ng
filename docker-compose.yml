@@ -45,6 +45,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       SPRING_PROFILES_ACTIVE: prod
+      TRUSTED_PROXY_IP: ${TRUSTED_PROXY_IP:-127.0.0.1}
     networks:
       - backend-net
     healthcheck:

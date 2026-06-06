@@ -51,7 +51,7 @@ public class AuthService {
 
     @Transactional
     public LoginResponse refresh(String plainRefreshToken) {
-        var user         = refreshTokenService.validateAndRotate(plainRefreshToken, null);
+        var user         = refreshTokenService.validateAndRotate(plainRefreshToken);
         var accessToken  = jwtService.generateToken(user.getEmail());
         var newRefresh   = refreshTokenService.createToken(user);
         return new LoginResponse(accessToken, newRefresh, user.getName(), user.getEmail(), user.getRole());
@@ -61,7 +61,7 @@ public class AuthService {
     public void logout(String plainRefreshToken) {
         if (plainRefreshToken != null && !plainRefreshToken.isBlank()) {
             try {
-                var user = refreshTokenService.validateAndRotate(plainRefreshToken, null);
+                var user = refreshTokenService.validateAndRotate(plainRefreshToken);
                 refreshTokenService.revokeAll(user);
             } catch (IllegalArgumentException ignored) {
                 // Token já expirado/inválido — logout continua normalmente

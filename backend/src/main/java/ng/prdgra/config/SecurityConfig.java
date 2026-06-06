@@ -57,8 +57,11 @@ public class SecurityConfig {
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
                 )
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                // Ordem garantida: rateLimitFilter → jwtAuthFilter → UsernamePasswordAuthenticationFilter
+                // addFilterBefore(A, B) insere A imediatamente antes de B na cadeia.
+                // Encadeando assim: JWT antes da âncora, rate limit antes do JWT.
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(rateLimitFilter, JwtAuthFilter.class)
                 .build();
     }
 
@@ -97,7 +100,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
-        config.setExposedHeaders(List.of("Authorization", "Content-Type", "Set-Cookie"));
+        config.setExposedHeaders(List.of("Authorization", "Content-Type"));
         // credentials=true necessário para o browser enviar/receber cookies HttpOnly
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);

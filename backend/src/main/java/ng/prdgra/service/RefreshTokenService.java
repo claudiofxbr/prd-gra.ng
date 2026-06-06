@@ -34,22 +34,25 @@ public class RefreshTokenService {
         String plainToken = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
         String hash = sha256Hex(plainToken);
 
-        refreshTokenRepository.revokeAllByUserId(user.getId());
-
         RefreshToken entity = RefreshToken.builder()
                 .user(user)
                 .tokenHash(hash)
                 .expiresAt(Instant.now().plusSeconds((long) expirationDays * 86_400))
                 .build();
-        @SuppressWarnings("null") // Spring Data save() nunca retorna null para entidades não-nulas
-        var unused = refreshTokenRepository.save(entity);
-        assert unused != null;
+        // Salva o novo token ANTES de revogar os anteriores — garante que o usuário
+        // nunca fique sem token válido se o save lançar exceção.
+        @SuppressWarnings("null")
+        RefreshToken saved = refreshTokenRepository.save(entity);
+        assert saved != null;
+
+        // Revoga todos os tokens anteriores, preservando o recém-criado.
+        refreshTokenRepository.revokeAllByUserId(user.getId(), saved.getId());
 
         return plainToken;
     }
 
     @Transactional
-    public User validateAndRotate(String plainToken, String newAccessEmail) {
+    public User validateAndRotate(String plainToken) {
         String hash = sha256Hex(plainToken);
         RefreshToken rt = refreshTokenRepository.findByTokenHash(hash)
                 .orElseThrow(() -> new IllegalArgumentException("Refresh token inválido"));

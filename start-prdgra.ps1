@@ -105,7 +105,7 @@ function Import-DotEnv {
 # =========================================================
 function Assert-EnvVars {
     Write-Title "Verificando variaveis de ambiente"
-    # FIX P2: DOMAIN adicionado — necessário para nginx em produção e .env.example
+    # DOMAIN adicionado - necessario para nginx em producao e .env.example
     $required = @("DATABASE_URL","JWT_SECRET","NEXT_PUBLIC_API_URL","CORS_ALLOWED_ORIGINS","DOMAIN")
     $allOk = $true
     foreach ($v in $required) {
@@ -313,7 +313,7 @@ function Start-WithDocker {
     }
 
     $backendOk  = Wait-ForService "Backend"  "http://localhost:8080/api/actuator/health" 120
-    $frontendOk = Wait-ForService "Frontend" "http://localhost:3000" 90
+    $frontendOk = Wait-ForService "Frontend" "http://localhost:3000" 180
 
     if (-not $backendOk -or -not $frontendOk) {
         $ErrorActionPreference = "Continue"
@@ -538,15 +538,16 @@ function Start-WithLocal {
     Set-Location $backendDir
     $backendLog = Join-Path $logsDir "backend.log"
 
+    # Perfil dev: desabilita rate limit para nao bloquear uso local e smoke tests (application-dev.yml)
     $backendProc = Start-Process $javaExeFull `
-        -ArgumentList "-jar", "`"$($jar.FullName)`"" `
+        -ArgumentList "-jar", "`"$($jar.FullName)`"", "-Dspring.profiles.active=dev" `
         -WorkingDirectory $backendDir `
         -WindowStyle Hidden `
         -RedirectStandardOutput $backendLog `
         -RedirectStandardError  "$backendLog.err" `
         -PassThru
 
-    Write-Ok "Backend iniciado (PID $($backendProc.Id))"
+    Write-Ok "Backend iniciado (PID $($backendProc.Id)) [perfil: dev]"
     Write-Info "Log: $backendLog"
 
     # Iniciar Frontend
@@ -603,6 +604,7 @@ function Start-WithLocal {
 # Invoke-SmokeTests: testes rapidos de sanidade
 # =========================================================
 function Invoke-SmokeTests {
+    param([switch]$RateLimitAtivo)
     Write-Title "Smoke Tests"
 
     $script:passed = 0
@@ -647,8 +649,43 @@ function Invoke-SmokeTests {
                   -Body '{}' `
                   -ExpectedCode 400
 
-    # Teste de conflito de e-mail (409) — alinhado com GlobalExceptionHandler atualizado
-    # Usa dominio example.com (RFC 2606 — reservado para testes, aceito pelo @Email do Hibernate Validator)
+    # Teste de rate limit: executado apenas em modo Docker (perfil prod, rate limit ativo).
+    # Em modo local o backend sobe com perfil dev (app.rate-limit.enabled=false),
+    # portanto o teste seria sempre FAIL e ainda bloquearia o IP para uso humano.
+    if ($RateLimitAtivo) {
+        Write-Info "Verificando ordem dos filtros (rate limit antes do JWT)..."
+        $rlBody  = '{"email":"ratelimit@test.com","password":"wrongpass"}'
+        $rlCode  = 0
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        for ($i = 1; $i -le 11; $i++) {
+            try {
+                $r = Invoke-WebRequest "http://localhost:8080/api/auth/login" `
+                         -Method POST -Body $rlBody -ContentType "application/json" `
+                         -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+                $rlCode = $r.StatusCode
+            } catch {
+                try { $rlCode = $_.Exception.Response.StatusCode.value__ -as [int] } catch { $rlCode = 0 }
+            }
+        }
+        $ErrorActionPreference = $prevEAP
+        if ($rlCode -eq 429) {
+            Write-Ok "Rate limit: 429 na 11a tentativa [PASS] - filtro executando na ordem correta"
+            $script:passed++
+        } else {
+            Write-Fail "Rate limit: esperado 429 na 11a tentativa, obtido $rlCode [FAIL]"
+            $script:failed++
+        }
+        # Aguardar a janela de 60s expirar para nao bloquear login do usuario apos os testes
+        Write-Info "Aguardando janela de rate limit expirar (65s) para liberar o login..."
+        Start-Sleep -Seconds 65
+        Write-Ok "Janela de rate limit expirada - login disponivel"
+    } else {
+        Write-Info "Rate limit desabilitado (perfil dev) - teste de rate limit ignorado"
+    }
+
+    # Teste de conflito de e-mail (409) - alinhado com GlobalExceptionHandler atualizado
+    # Usa dominio example.com (RFC 2606 - reservado para testes, aceito pelo @Email do Hibernate Validator)
     # Dominio .local e rejeitado pelo validador Bean Validation antes de chegar ao AuthService
     $smokeEmail = "smoketest_$(Get-Date -Format 'HHmmss')@example.com"
     $smokeBody  = "{`"name`":`"Smoke`",`"email`":`"$smokeEmail`",`"password`":`"Smoke@1234`"}"
@@ -663,6 +700,7 @@ function Invoke-SmokeTests {
 
     Test-Endpoint "Frontend /login"            "http://localhost:3000/login"                         -ExpectedCode 200
     Test-Endpoint "Frontend /register"         "http://localhost:3000/register"                      -ExpectedCode 200
+    Test-Endpoint "Frontend /dashboard"        "http://localhost:3000/dashboard"                     -ExpectedCode 200
 
     Write-Host ""
     Write-Host "  Resultado: " -NoNewline
@@ -688,6 +726,7 @@ function Show-Summary {
     Write-Host "  |    /           -> Landing page             |" -ForegroundColor DarkGray
     Write-Host "  |    /login      -> Entrar                   |" -ForegroundColor DarkGray
     Write-Host "  |    /register   -> Criar conta              |" -ForegroundColor DarkGray
+    Write-Host "  |    /dashboard  -> Painel principal         |" -ForegroundColor DarkGray
     Write-Host "  |    /prd        -> Seus PRDs (requer login) |" -ForegroundColor DarkGray
     Write-Host "  |    /prd/new    -> Criar novo PRD           |" -ForegroundColor DarkGray
     Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
@@ -731,7 +770,8 @@ switch ($Modo) {
         Import-DotEnv
         Assert-EnvVars
         Start-WithDocker
-        Invoke-SmokeTests
+        # Docker usa perfil prod: rate limit ativo, teste de rate limit habilitado
+        Invoke-SmokeTests -RateLimitAtivo
         Show-Summary
         Open-Browser
     }
@@ -740,6 +780,7 @@ switch ($Modo) {
         Import-DotEnv
         Assert-EnvVars
         Start-WithLocal
+        # Local usa perfil dev: rate limit desabilitado, teste de rate limit ignorado
         Invoke-SmokeTests
         Show-Summary
         Open-Browser
@@ -755,6 +796,7 @@ switch ($Modo) {
 
         if ($backendOk -and $frontendOk) {
             Write-Ok "PRD-GRA.NG ja esta rodando!"
+            # Modo auto ja rodando: nao sabemos o perfil, omite teste de rate limit por seguranca
             Invoke-SmokeTests
             Show-Summary
             Open-Browser
@@ -771,12 +813,15 @@ switch ($Modo) {
         if ($dockerAvailable) {
             Write-Ok "Docker detectado - usando modo Docker"
             Start-WithDocker
+            # Docker: perfil prod com rate limit ativo
+            Invoke-SmokeTests -RateLimitAtivo
         } else {
             Write-Warn "Docker nao disponivel - usando modo local"
             Start-WithLocal
+            # Local: perfil dev com rate limit desabilitado
+            Invoke-SmokeTests
         }
 
-        Invoke-SmokeTests
         Show-Summary
         Open-Browser
     }

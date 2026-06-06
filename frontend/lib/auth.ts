@@ -1,7 +1,7 @@
 import type { AuthUser } from '@/types'
 
 const COOKIE_USER = 'prdgra_user'
-const MAX_AGE     = 60 * 60 * 24 // 24 h — alinhado com o JWT do backend
+const MAX_AGE     = 60 * 60 * 24 * 30 // 30 dias — alinhado com o refresh token do backend
 
 // Apenas o cookie de perfil do usuário (não-sensível) é gerenciado pelo JS.
 // O token JWT é gerenciado exclusivamente pelo backend via Set-Cookie HttpOnly.
