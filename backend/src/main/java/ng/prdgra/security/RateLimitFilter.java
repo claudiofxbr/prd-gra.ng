@@ -73,16 +73,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
         String ip = resolveClientIp(request);
 
-        WindowEntry entry = windows.compute(ip, (k, existing) -> {
+        // Captura o count dentro do compute() para evitar race condition:
+        // entry.count.get() fora do bloco atômico poderia ler um valor já
+        // incrementado por outra thread, deixando requests passarem além do limite.
+        AtomicInteger countHolder = new AtomicInteger();
+        windows.compute(ip, (k, existing) -> {
             long now = System.currentTimeMillis();
             if (existing == null || now - existing.windowStart > WINDOW_MS) {
+                countHolder.set(1);
                 return new WindowEntry(now, new AtomicInteger(1));
             }
-            existing.count.incrementAndGet();
+            countHolder.set(existing.count.incrementAndGet());
             return existing;
         });
 
-        if (entry.count.get() > maxRequests) {
+        if (countHolder.get() > maxRequests) {
             log.warn("Rate limit atingido para IP: {}", ip);
             sendTooManyRequests(response);
             return;

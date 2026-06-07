@@ -354,7 +354,7 @@ function Invoke-Ssh {
     param([string]$Cmd, [switch]$PassThru)
     $sshArgs = @(
         "-i",  $script:Config.SshKeyPath,
-        "-o",  "StrictHostKeyChecking=no",
+        "-o",  "StrictHostKeyChecking=accept-new",
         "-o",  "ConnectTimeout=10",
         "$($script:Config.VpsUser)@$($script:Config.VpsHost)",
         $Cmd
@@ -367,7 +367,7 @@ function Invoke-Ssh {
 function Test-VpsReachable {
     $r = ssh `
         -i $script:Config.SshKeyPath `
-        -o StrictHostKeyChecking=no `
+        -o StrictHostKeyChecking=accept-new `
         -o ConnectTimeout=10 `
         -o BatchMode=yes `
         "$($script:Config.VpsUser)@$($script:Config.VpsHost)" `
@@ -436,7 +436,8 @@ function Step-GitPush {
                 $ts  = Get-Date -Format "yyyy-MM-dd HH:mm"
                 $msg = "chore: deploy $ts"
             }
-            git add -A
+            # Respeita o .gitignore  -  nao usa -A para evitar incluir .deploy-config.json ou .env acidentalmente
+            git add --all -- ':!.deploy-config.json' ':!.env' ':!.env.*' ':!add-ssh-key.ps1' ':!vps-deploy.sh'
             git commit -m $msg
             Write-Ok "Commit: $msg"
         } else {
@@ -617,7 +618,7 @@ function Step-SmokeTest {
         exit 1
     }
 
-    # Frontend — acessivel sob o sub-path /prd-gra.ng/
+    # Frontend  -  acessivel sob o sub-path /prd-gra.ng/
     Write-Info "Testando frontend em https://$domain/prd-gra.ng/ ..."
     try {
         $r = Invoke-WebRequest -Uri "https://$domain/prd-gra.ng/" `
@@ -651,30 +652,41 @@ function Step-SmokeTest {
     if ($tls -match "Verify return code: 0") { Write-Ok "Certificado TLS valido" }
     else                                     { Write-Info "TLS: $tls" }
 
-    # Fix #4/#11: validar headers de seguranca do frontend
-    # X-Frame-Options deve ser DENY (consistente com frame-ancestors 'none' no CSP).
-    # CSP nao deve conter 'unsafe-inline' em script-src em producao.
-    Write-Info "Verificando headers de seguranca do frontend..."
+    # Validar headers de seguranca no sub-path real da aplicacao (/prd-gra.ng/)
+    # O nginx nao define X-Frame-Options nem CSP  -  sao responsabilidade do middleware Next.js.
+    # Verificar na URL onde a app esta, nao na raiz (que e um redirect 301).
+    Write-Info "Verificando headers de seguranca em /prd-gra.ng/ ..."
     try {
-        $hr = Invoke-WebRequest -Uri "https://$domain" `
+        $hr = Invoke-WebRequest -Uri "https://$domain/prd-gra.ng/" `
                   -TimeoutSec 15 -SkipCertificateCheck -ErrorAction Stop -Method HEAD
-        $xfo = $hr.Headers["X-Frame-Options"]
-        $csp = $hr.Headers["Content-Security-Policy"]
+
+        $xfo  = $hr.Headers["X-Frame-Options"]
+        $xcto = $hr.Headers["X-Content-Type-Options"]
+        $csp  = $hr.Headers["Content-Security-Policy"]
+        $hsts = $hr.Headers["Strict-Transport-Security"]
 
         if ($xfo -eq "DENY") {
             Write-Ok "X-Frame-Options: DENY [OK]"
+        } elseif ($xfo) {
+            Write-Fail "X-Frame-Options: '$xfo' (esperado DENY  -  verifique middleware.ts)"
         } else {
-            Write-Fail "X-Frame-Options: '$xfo' (esperado DENY)"
+            Write-Fail "X-Frame-Options: ausente (verifique middleware.ts)"
         }
+
+        if ($xcto -eq "nosniff") { Write-Ok "X-Content-Type-Options: nosniff [OK]" }
+        else                     { Write-Info "X-Content-Type-Options: '$xcto'" }
+
+        if ($hsts) { Write-Ok "HSTS: presente [OK]" }
+        else       { Write-Fail "HSTS ausente (verifique nginx.conf)" }
 
         # Cast para string: PowerShell 7 pode retornar array de headers
         $cspStr = if ($csp -is [array]) { $csp -join ' ' } else { [string]$csp }
         if ($cspStr -and $cspStr -notmatch "script-src[^;]*'unsafe-inline'") {
-            Write-Ok "CSP script-src sem 'unsafe-inline' em producao [OK]"
+            Write-Ok "CSP: presente sem 'unsafe-inline' em script-src [OK]"
         } elseif (-not $cspStr) {
-            Write-Info "CSP: header nao retornado (verifique next.config.mjs)"
+            Write-Fail "CSP: ausente (verifique middleware.ts  -  deve ser enviado em producao)"
         } else {
-            Write-Fail "CSP contem 'unsafe-inline' em script-src - remova para producao"
+            Write-Fail "CSP contem 'unsafe-inline' em script-src  -  remova para producao"
         }
     } catch {
         Write-Info "Nao foi possivel verificar headers de seguranca: $_"
@@ -759,18 +771,89 @@ function Step-Report {
     Write-Host "    ssh $vps `"docker compose -f $appDir/docker-compose.yml logs -f --tail=50`""
     Write-Host ""
     Write-Host "    # Descobrir IP do nginx na frontend-net (para TRUSTED_PROXY_IP)"
-    Write-Host "    # Fix #12: nginx esta apenas na frontend-net (removido da backend-net)"
-    Write-Host "    ssh $vps `"docker inspect `$(docker compose -f $appDir/docker-compose.yml ps -q nginx) --format '{{json .NetworkSettings.Networks}}' | python3 -m json.tool`""
+    Write-Host "    # nginx esta nas redes frontend-net e backend-net  -  use o IP da frontend-net"
+    Write-Host "    ssh $vps `"docker inspect `$(docker compose -f $appDir/docker-compose.yml ps -q nginx) --format '{{range `$net,`$cfg := .NetworkSettings.Networks}}{{println `$net `$cfg.IPAddress}}{{end}}' | grep frontend`""
     Write-Host ""
     Write-Host "    # Reiniciar servicos"
     Write-Host "    ssh $vps `"docker compose -f $appDir/docker-compose.yml restart`""
     Write-Host ""
 
     if ($script:Config.TrustedProxyIp -eq "172.18.0.2") {
-        Write-Host "  ${C_BOLD}${C_YELLOW}PROXIMO PASSO - Corrigir TRUSTED_PROXY_IP:${C_RESET}"
-        Write-Host "  Execute o comando de 'Descobrir IP do nginx' acima, copie o IP"
-        Write-Host "  e reexecute: .\deploy.ps1  (informe o novo IP quando perguntado)"
-        Write-Host ""
+        Write-Info "TRUSTED_PROXY_IP ainda e 172.18.0.2  -  atualizando automaticamente..."
+        Step-UpdateProxyIp
+    }
+}
+
+# =============================================================================
+# DESCOBERTA AUTOMATICA DO TRUSTED_PROXY_IP
+# =============================================================================
+
+function Step-UpdateProxyIp {
+    $appDir  = $script:Config.AppDir
+    $dc      = "docker compose -f $appDir/docker-compose.yml"
+
+    # Obtem ID do container nginx
+    $nginxId = Invoke-Ssh "$dc ps -q nginx 2>/dev/null | head -1" -PassThru
+    $nginxId = $nginxId.Trim()
+
+    if (-not $nginxId) {
+        Write-Info "Container nginx nao encontrado  -  TRUSTED_PROXY_IP nao atualizado."
+        return
+    }
+
+    # Extrai IP na rede frontend-net (onde nginx e frontend se comunicam)
+    # {{println}} evita a necessidade de escapar \n dentro de strings PowerShell
+    $inspectCmd = "docker inspect $nginxId " +
+        "--format '{{range `$net, `$cfg := .NetworkSettings.Networks}}{{println `$net `$cfg.IPAddress}}{{end}}' " +
+        "2>/dev/null | grep frontend | awk '{print `$2}' | head -1"
+    $newIp = (Invoke-Ssh $inspectCmd -PassThru).Trim()
+
+    # Fallback: qualquer IP disponivel
+    if (-not $newIp) {
+        $newIp = (Invoke-Ssh "docker inspect $nginxId --format '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' 2>/dev/null | grep -v '^`$' | head -1" -PassThru).Trim()
+    }
+
+    if (-not $newIp) {
+        Write-Info "Nao foi possivel obter IP do nginx  -  TRUSTED_PROXY_IP nao alterado."
+        return
+    }
+
+    $oldIp = $script:Config.TrustedProxyIp
+    if ($newIp -eq $oldIp) {
+        Write-Ok "TRUSTED_PROXY_IP ja esta correto: $newIp"
+        return
+    }
+
+    Write-Ok "TRUSTED_PROXY_IP descoberto: $newIp (anterior: $oldIp)"
+
+    # Atualiza .env na VPS
+    $updateEnv = "sed -i 's/^TRUSTED_PROXY_IP=.*/TRUSTED_PROXY_IP=$newIp/' $appDir/.env"
+    Invoke-Ssh $updateEnv | Out-Null
+
+    # Atualiza .deploy-env (config persistida sem secrets)
+    $updateDeployEnv = "sed -i '/^TRUSTED_PROXY_IP=/d' $appDir/.deploy-env 2>/dev/null || true; echo 'TRUSTED_PROXY_IP=$newIp' >> $appDir/.deploy-env; chmod 600 $appDir/.deploy-env"
+    Invoke-Ssh $updateDeployEnv | Out-Null
+
+    # Reinicia backend para aplicar novo IP (sem derrubar nginx/frontend)
+    Invoke-Ssh "$dc up -d --no-deps backend 2>/dev/null" | Out-Null
+    Write-Ok "Backend reiniciado com TRUSTED_PROXY_IP=$newIp"
+
+    # Atualiza config local para evitar aviso na proxima execucao
+    $script:Config.TrustedProxyIp = $newIp
+    Save-Config $script:Config
+
+    # Atualiza Secret no GitHub via gh CLI se disponivel
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        $newIp | gh secret set TRUSTED_PROXY_IP --repo $script:Config.GhRepo 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "Secret TRUSTED_PROXY_IP atualizado no GitHub automaticamente."
+        } else {
+            Write-Info "Nao foi possivel atualizar Secret no GitHub via gh."
+            Write-Info "Atualize manualmente: TRUSTED_PROXY_IP = $newIp"
+        }
+    } else {
+        Write-Info "Atualize o Secret no GitHub: TRUSTED_PROXY_IP = $newIp"
+        Write-Info "  https://github.com/$($script:Config.GhRepo)/settings/secrets/actions"
     }
 }
 
@@ -788,7 +871,7 @@ function Step-SslSetup {
     Write-Info "Pre-requisito: DNS A de $($script:Config.Domain) apontando para a VPS."
     Write-Host ""
 
-    # Coletar e-mail aqui (no PowerShell) — evita problema de read interativo via SSH
+    # Coletar e-mail aqui (no PowerShell)  -  evita problema de read interativo via SSH
     $leEmail = ""
     while (-not $leEmail) {
         Write-Host "  ${C_CYAN}E-mail para o Let's Encrypt${C_RESET}: " -NoNewline
@@ -814,12 +897,12 @@ function Step-SslSetup {
     $tmp = "/tmp/ssl-setup-$([System.IO.Path]::GetRandomFileName().Replace('.',''))"
     $sshBase = @(
         "-i", $script:Config.SshKeyPath,
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         "$($script:Config.VpsUser)@$($script:Config.VpsHost)"
     )
     $scpArgs = @(
         "-i", $script:Config.SshKeyPath,
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         $sslPath,
         "$($script:Config.VpsUser)@$($script:Config.VpsHost):$tmp"
     )
@@ -829,7 +912,7 @@ function Step-SslSetup {
     if ($LASTEXITCODE -ne 0) { Write-Fail "scp falhou."; exit 1 }
 
     Write-Info "Executando ssl-setup.sh na VPS (pode levar 1-2 minutos)..."
-    # E-mail passado como argumento — sem read interativo no SSH
+    # E-mail passado como argumento  -  sem read interativo no SSH
     $sshCmd = "chmod +x $tmp && bash $tmp '$leEmail'; rc=`$?; rm -f $tmp; exit `$rc"
     ssh -t @sshBase $sshCmd
     if ($LASTEXITCODE -ne 0) {
@@ -864,14 +947,14 @@ function Step-Bootstrap {
     $tmp     = "/tmp/bootstrap-$([System.IO.Path]::GetRandomFileName().Replace('.',''))"
     $sshBase = @(
         "-i", $script:Config.SshKeyPath,
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         "$($script:Config.VpsUser)@$($script:Config.VpsHost)"
     )
 
     # 1. Copiar o script via scp (sem ocupar stdin)
     $scpArgs = @(
         "-i", $script:Config.SshKeyPath,
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         $bsPath,
         "$($script:Config.VpsUser)@$($script:Config.VpsHost):$tmp"
     )
@@ -944,6 +1027,7 @@ if ($VpsOnly) {
     Step-VpsConnect
     Step-SmokeTest
     Step-VpsValidation
+    Step-UpdateProxyIp
     Step-Report
     exit 0
 }
@@ -957,4 +1041,5 @@ if (-not $SkipPush) {
 Step-VpsConnect
 Step-SmokeTest
 Step-VpsValidation
+Step-UpdateProxyIp
 Step-Report

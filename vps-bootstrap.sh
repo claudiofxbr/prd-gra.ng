@@ -18,8 +18,20 @@ CERT_VOLUME_NAME="${APP_NAME}_certbot-certs"
 echo "==> [1/7] Atualizando sistema..."
 apt-get update -qq
 apt-get upgrade -y -qq
+# certbot via snap e a forma recomendada no Ubuntu 22+ — o pacote apt pode ser um wrapper
+# desatualizado. Removemos certbot do apt e instalamos via snap para garantir versao atual.
 # docker-compose-plugin: necessario para 'docker compose' (V2, sem hifen)
-apt-get install -y -qq curl wget git ufw fail2ban certbot docker-compose-plugin
+apt-get install -y -qq curl wget git ufw fail2ban snapd docker-compose-plugin
+# Certbot via snap (metodo oficial recomendado pelo Let's Encrypt para Ubuntu 20+)
+snap install --classic certbot 2>/dev/null || true
+# Criar link simbolico se snap instalou mas /usr/bin/certbot nao existe
+if command -v snap &>/dev/null && snap list certbot &>/dev/null 2>&1; then
+    ln -sf /snap/bin/certbot /usr/bin/certbot 2>/dev/null || true
+fi
+# Fallback: instalar via apt se snap nao disponivel
+if ! command -v certbot &>/dev/null; then
+    apt-get install -y -qq certbot
+fi
 
 # ─────────────────────────────────────────────────────────────
 # 2. Firewall
@@ -143,24 +155,42 @@ else
 set -euo pipefail
 CERT_VOLUME_NAME="${CERT_VOLUME_NAME}"
 APP_DIR="${APP_DIR}"
+
 # Parar nginx temporariamente para liberar porta 80
 docker compose -f "\$APP_DIR/docker-compose.yml" stop nginx 2>/dev/null || true
-# Renovar certificado
+
+# Renovar certificado (so age se faltar < 30 dias)
 certbot renew --quiet --standalone
+
+# Backup do volume atual antes de destrui-lo — garante rollback se a copia falhar
+CERT_MOUNT_OLD=\$(docker volume inspect "\$CERT_VOLUME_NAME" --format '{{.Mountpoint}}' 2>/dev/null || echo "")
+BACKUP_DIR="/tmp/certbot-backup-\$(date +%s)"
+if [ -n "\$CERT_MOUNT_OLD" ] && [ -d "\$CERT_MOUNT_OLD" ]; then
+  mkdir -p "\$BACKUP_DIR"
+  cp -rL "\$CERT_MOUNT_OLD/." "\$BACKUP_DIR/" 2>/dev/null || true
+fi
+
 # Recriar volume e copiar novos certificados
 docker volume rm "\$CERT_VOLUME_NAME" 2>/dev/null || true
 docker volume create "\$CERT_VOLUME_NAME"
 CERT_MOUNT=\$(docker volume inspect "\$CERT_VOLUME_NAME" --format '{{.Mountpoint}}')
-cp -rL /etc/letsencrypt/. "\$CERT_MOUNT/"
+if ! cp -rL /etc/letsencrypt/. "\$CERT_MOUNT/"; then
+  echo "ERRO: falha ao copiar certificados. Restaurando backup..."
+  if [ -n "\$BACKUP_DIR" ] && [ -d "\$BACKUP_DIR" ]; then
+    cp -rL "\$BACKUP_DIR/." "\$CERT_MOUNT/"
+  fi
+fi
+[ -n "\$BACKUP_DIR" ] && rm -rf "\$BACKUP_DIR"
+
 # Reiniciar nginx com novo certificado
 docker compose -f "\$APP_DIR/docker-compose.yml" start nginx
 echo "Certificado renovado e nginx reiniciado: \$(date)"
 RENEW_SCRIPT
   chmod +x /usr/local/bin/renew-certs.sh
 
-  # Cron: renovacao automatica domingo as 03h com log
-  (crontab -l 2>/dev/null || true; echo "0 3 * * 0 /usr/local/bin/renew-certs.sh >> /var/log/certbot-renew.log 2>&1") | crontab -
-  echo "    Renovacao automatica configurada (domingo as 03h via /usr/local/bin/renew-certs.sh)."
+  # Cron 2x/semana (segunda e quinta, 03h) — Let's Encrypt recomenda verificacao frequente
+  (crontab -l 2>/dev/null || true; echo "0 3 * * 1,4 /usr/local/bin/renew-certs.sh >> /var/log/certbot-renew.log 2>&1") | crontab -
+  echo "    Renovacao automatica configurada (segunda e quinta 03h via /usr/local/bin/renew-certs.sh)."
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -177,19 +207,21 @@ echo "     VPS_USER            = deploy"
 echo "     VPS_SSH_KEY         = conteudo da chave privada SSH do usuario deploy"
 echo "     DATABASE_URL        = postgresql://user:pass@ep-xxx.neon.tech/prdgra?sslmode=verify-full"
 echo "     JWT_SECRET          = (gere com: openssl rand -base64 64)"
-echo "     NEXT_PUBLIC_API_URL = https://${DOMAIN}/api"
+echo "     NEXT_PUBLIC_API_URL = /api"
 echo "     CORS_ALLOWED_ORIGINS= https://${DOMAIN}"
 echo "     DOMAIN              = ${DOMAIN}"
 echo "     TRUSTED_PROXY_IP    = (veja passo 2 abaixo)"
 echo ""
 echo "  2. Apos o primeiro deploy (git push origin main), descubra o IP"
 echo "     interno do container nginx na frontend-net e atualize TRUSTED_PROXY_IP."
-echo "     O nginx esta nas redes frontend-net E backend-net (necessario para proxy /api)."
+echo "     O nginx esta nas redes frontend-net (proxy do frontend) e backend-net (proxy da API)."
+echo "     O rate limit filtra /auth/login e /auth/register que chegam pelo backend-net."
+echo "     Use o IP do nginx na frontend-net como TRUSTED_PROXY_IP:"
 echo ""
 echo "       docker inspect \$(docker compose -f ${APP_DIR}/docker-compose.yml ps -q nginx) \\"
-echo "         --format '{{json .NetworkSettings.Networks}}' | python3 -m json.tool"
+echo "         --format '{{range \$net,\$cfg := .NetworkSettings.Networks}}{{\$net}} {{\$cfg.IPAddress}}{{\"\\n\"}}{{end}}' \\"
+echo "         | grep frontend | awk '{print \$2}'"
 echo ""
-echo "     Copie o campo \"IPAddress\" dentro da chave \"*_frontend-net\"."
 echo "     Atualize o Secret TRUSTED_PROXY_IP no GitHub com esse valor."
 echo "     Depois faca um novo push para aplicar."
 echo ""
@@ -201,7 +233,7 @@ echo "       # Logs"
 echo "       docker compose -f ${APP_DIR}/docker-compose.yml logs -f --tail=50"
 echo ""
 echo "       # Smoke test"
-echo "       curl -sk https://${DOMAIN}/api/actuator/health | python3 -m json.tool"
+echo "       curl -sk https://${DOMAIN}/api/actuator/health | tr ',' '\\n'"
 echo ""
 echo "       # Frontend"
 echo "       curl -sk https://${DOMAIN} | grep -q '<html' && echo 'Frontend OK'"

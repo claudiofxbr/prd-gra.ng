@@ -1,6 +1,8 @@
 package ng.prdgra.controller;
 
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -25,6 +27,18 @@ public class GlobalExceptionHandler {
         return detail;
     }
 
+    // Violações de @Min/@Max/@NotBlank em @RequestParam (via @Validated no controller)
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
+        String msg = ex.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .reduce((a, b) -> a + "; " + b).orElse("Parâmetro inválido");
+        var detail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        detail.setTitle("Parâmetro inválido");
+        detail.setDetail(msg);
+        return detail;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
         // E-mail já registrado é conflito (409), não erro de validação (400)
@@ -42,6 +56,15 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleNotFound(NoSuchElementException ex) {
         var detail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
         detail.setDetail(ex.getMessage());
+        return detail;
+    }
+
+    // Violação de constraint do BD (UK, FK, NOT NULL) — ex.: e-mail duplicado em race condition
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
+        log.warn("Violação de integridade de dados: {}", ex.getMostSpecificCause().getMessage());
+        var detail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        detail.setDetail("Operação viola restrição de integridade de dados.");
         return detail;
     }
 

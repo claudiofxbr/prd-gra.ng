@@ -8,10 +8,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # GHCR requer lowercase — github.repository ja e lowercase por padrao
-  IMAGE_BACKEND:  ghcr.io/${{ github.repository }}/backend
-  IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/frontend
-  IMAGE_NGINX:    ghcr.io/${{ github.repository }}/nginx
+  # github.repository_owner ja e lowercase; github.event.repository.name preserva case do repo
+  # mas GHCR aceita case-insensitive no nome do repo — apenas o owner precisa ser lowercase
+  IMAGE_BACKEND:  ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/backend
+  IMAGE_FRONTEND: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/frontend
+  IMAGE_NGINX:    ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/nginx
 
 jobs:
   # ─────────────────────────────────────────────────────────────
@@ -132,8 +133,8 @@ jobs:
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
           DOMAIN: ${{ secrets.DOMAIN }}
           TRUSTED_PROXY_IP: ${{ secrets.TRUSTED_PROXY_IP }}
-          # GHCR_REPO em lowercase (obrigatorio pelo GHCR)
-          GHCR_REPO: ghcr.io/${{ github.repository }}
+          # GHCR_REPO em lowercase (obrigatorio pelo GHCR) — github.repository_owner ja e lowercase
+          GHCR_REPO: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
           IMAGE_TAG: ${{ github.sha }}
           DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_ACTOR: ${{ github.actor }}
@@ -146,17 +147,18 @@ jobs:
             set -euo pipefail
             cd /opt/prd-gra
 
-            # Gravar .env via printf — evita problemas de indentacao de heredoc no YAML
-            printf 'DATABASE_URL=%s\nJWT_SECRET=%s\nNEXT_PUBLIC_API_URL=%s\nCORS_ALLOWED_ORIGINS=%s\nDOMAIN=%s\nTRUSTED_PROXY_IP=%s\nGHCR_REPO=%s\nIMAGE_TAG=%s\n' \
-              "$DATABASE_URL" \
-              "$JWT_SECRET" \
-              "$NEXT_PUBLIC_API_URL" \
-              "$CORS_ALLOWED_ORIGINS" \
-              "$DOMAIN" \
-              "$TRUSTED_PROXY_IP" \
-              "$GHCR_REPO" \
-              "$IMAGE_TAG" \
-              > /opt/prd-gra/.env
+            # Gravar .env via echo individual — evita que % em valores (ex.: URLs com %40)
+            # sejam interpretados como diretivas de formato pelo printf.
+            {
+              echo "DATABASE_URL=${DATABASE_URL}"
+              echo "JWT_SECRET=${JWT_SECRET}"
+              echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}"
+              echo "CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
+              echo "DOMAIN=${DOMAIN}"
+              echo "TRUSTED_PROXY_IP=${TRUSTED_PROXY_IP}"
+              echo "GHCR_REPO=${GHCR_REPO}"
+              echo "IMAGE_TAG=${IMAGE_TAG}"
+            } > /opt/prd-gra/.env
             chmod 600 /opt/prd-gra/.env
 
             # Login no GHCR

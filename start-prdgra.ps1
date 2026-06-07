@@ -153,13 +153,13 @@ function Show-Status {
 
     Write-Info "Verificando portas..."
     $backendOk  = Test-HttpPort "http://localhost:8080/api/actuator/health"
-    $frontendOk = Test-HttpPort "http://localhost:3000"
+    $frontendOk = Test-HttpPort "http://localhost:3000/prd-gra.ng"
 
-    if ($backendOk)  { Write-Ok  "Backend  -> http://localhost:8080/api  [ONLINE]"  }
-    else             { Write-Warn "Backend  -> http://localhost:8080/api  [OFFLINE]" }
+    if ($backendOk)  { Write-Ok  "Backend  -> http://localhost:8080/api         [ONLINE]"  }
+    else             { Write-Warn "Backend  -> http://localhost:8080/api         [OFFLINE]" }
 
-    if ($frontendOk) { Write-Ok  "Frontend -> http://localhost:3000       [ONLINE]"  }
-    else             { Write-Warn "Frontend -> http://localhost:3000       [OFFLINE]" }
+    if ($frontendOk) { Write-Ok  "Frontend -> http://localhost:3000/prd-gra.ng  [ONLINE]"  }
+    else             { Write-Warn "Frontend -> http://localhost:3000/prd-gra.ng  [OFFLINE]" }
 
     if ($backendOk) {
         try {
@@ -178,7 +178,7 @@ function Show-Status {
     Write-Host ""
     if ($backendOk -and $frontendOk) {
         Write-Host "  Acesse o aplicativo em: " -NoNewline
-        Write-Host "http://localhost:3000" -ForegroundColor Green
+        Write-Host "http://localhost:3000/prd-gra.ng" -ForegroundColor Green
     }
 }
 
@@ -313,7 +313,7 @@ function Start-WithDocker {
     }
 
     $backendOk  = Wait-ForService "Backend"  "http://localhost:8080/api/actuator/health" 120
-    $frontendOk = Wait-ForService "Frontend" "http://localhost:3000" 180
+    $frontendOk = Wait-ForService "Frontend" "http://localhost:3000/prd-gra.ng" 180
 
     if (-not $backendOk -or -not $frontendOk) {
         $ErrorActionPreference = "Continue"
@@ -584,7 +584,7 @@ function Start-WithLocal {
     # Aguardar servicos
     # Next.js 14 com typedRoutes experimental pode levar 2-3min no cold start
     $backendOk  = Wait-ForService "Backend"  "http://localhost:8080/api/actuator/health" 120
-    $frontendOk = Wait-ForService "Frontend" "http://localhost:3000" 180
+    $frontendOk = Wait-ForService "Frontend" "http://localhost:3000/prd-gra.ng" 180
 
     if (-not $backendOk) {
         Write-Fail "Backend nao iniciou. Ultimas linhas do log:"
@@ -640,7 +640,7 @@ function Invoke-SmokeTests {
     }
 
     Test-Endpoint "Health check backend"       "http://localhost:8080/api/actuator/health"          -ExpectedCode 200
-    Test-Endpoint "Frontend raiz"              "http://localhost:3000"                               -ExpectedCode 200
+    Test-Endpoint "Frontend raiz"              "http://localhost:3000/prd-gra.ng"                    -ExpectedCode 200
     Test-Endpoint "API protegida sem token"    "http://localhost:8080/api/prds"                      -ExpectedCode 401
     Test-Endpoint "Login credencial invalida"  "http://localhost:8080/api/auth/login" -Method POST `
                   -Body '{"email":"x@x.com","password":"wrongpass123"}' `
@@ -698,9 +698,9 @@ function Invoke-SmokeTests {
                   -Body $smokeBody `
                   -ExpectedCode 409
 
-    Test-Endpoint "Frontend /login"            "http://localhost:3000/login"                         -ExpectedCode 200
-    Test-Endpoint "Frontend /register"         "http://localhost:3000/register"                      -ExpectedCode 200
-    Test-Endpoint "Frontend /dashboard"        "http://localhost:3000/dashboard"                     -ExpectedCode 200
+    Test-Endpoint "Frontend /login"            "http://localhost:3000/prd-gra.ng/login"              -ExpectedCode 200
+    Test-Endpoint "Frontend /register"         "http://localhost:3000/prd-gra.ng/register"           -ExpectedCode 200
+    Test-Endpoint "Frontend /dashboard"        "http://localhost:3000/prd-gra.ng/dashboard"          -ExpectedCode 200
 
     Write-Host ""
     Write-Host "  Resultado: " -NoNewline
@@ -718,22 +718,22 @@ function Show-Summary {
     Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
     Write-Host "  |        PRD-GRA.NG  ATIVO E PRONTO         |" -ForegroundColor Blue
     Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
-    Write-Host "  |  Aplicativo  :  http://localhost:3000      |" -ForegroundColor Cyan
-    Write-Host "  |  API         :  http://localhost:8080/api  |" -ForegroundColor Cyan
-    Write-Host "  |  Health      :  /api/actuator/health       |" -ForegroundColor Cyan
-    Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
-    Write-Host "  |  Rotas:                                    |" -ForegroundColor DarkGray
-    Write-Host "  |    /           -> Landing page             |" -ForegroundColor DarkGray
-    Write-Host "  |    /login      -> Entrar                   |" -ForegroundColor DarkGray
-    Write-Host "  |    /register   -> Criar conta              |" -ForegroundColor DarkGray
-    Write-Host "  |    /dashboard  -> Painel principal         |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd        -> Seus PRDs (requer login) |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd/new    -> Criar novo PRD           |" -ForegroundColor DarkGray
-    Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
-    Write-Host "  |  Comandos uteis:                           |" -ForegroundColor Yellow
-    Write-Host "  |    .\start-prdgra.ps1 -Modo status         |" -ForegroundColor Yellow
-    Write-Host "  |    .\start-prdgra.ps1 -Modo parar          |" -ForegroundColor Yellow
-    Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
+    Write-Host "  |  Aplicativo  :  http://localhost:3000/prd-gra.ng   |" -ForegroundColor Cyan
+    Write-Host "  |  API         :  http://localhost:8080/api          |" -ForegroundColor Cyan
+    Write-Host "  |  Health      :  /api/actuator/health               |" -ForegroundColor Cyan
+    Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
+    Write-Host "  |  Rotas (basePath: /prd-gra.ng):                     |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng           -> Landing page            |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/login     -> Entrar                  |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/register  -> Criar conta             |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/dashboard -> Painel principal        |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/prd       -> Seus PRDs (login)       |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/prd/new   -> Criar novo PRD          |" -ForegroundColor DarkGray
+    Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
+    Write-Host "  |  Comandos uteis:                                     |" -ForegroundColor Yellow
+    Write-Host "  |    .\start-prdgra.ps1 -Modo status                   |" -ForegroundColor Yellow
+    Write-Host "  |    .\start-prdgra.ps1 -Modo parar                    |" -ForegroundColor Yellow
+    Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
     Write-Host ""
 }
 
@@ -744,10 +744,10 @@ function Open-Browser {
     Write-Info "Abrindo aplicativo no navegador..."
     Start-Sleep -Seconds 2
     try {
-        Start-Process "http://localhost:3000"
+        Start-Process "http://localhost:3000/prd-gra.ng"
     } catch {
         Write-Warn "Nao foi possivel abrir o browser automaticamente."
-        Write-Warn "Acesse manualmente: http://localhost:3000"
+        Write-Warn "Acesse manualmente: http://localhost:3000/prd-gra.ng"
     }
 }
 

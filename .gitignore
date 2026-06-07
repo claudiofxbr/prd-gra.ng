@@ -3,6 +3,13 @@
 .env.*
 !.env.example
 
+# Config de deploy local (contém IP da VPS, usuário SSH, caminhos de chave)
+.deploy-config.json
+
+# Scripts operacionais com dados específicos da infra (não fazem parte do código)
+add-ssh-key.ps1
+vps-deploy.sh
+
 # Java / Maven
 backend/target/
 *.class

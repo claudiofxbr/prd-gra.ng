@@ -33,9 +33,17 @@ echo "    Volume Docker: $CERT_VOLUME"
 echo ""
 
 if ! command -v certbot &>/dev/null; then
-  echo "==> Instalando certbot..."
+  echo "==> Instalando certbot via snap (metodo oficial para Ubuntu 20+)..."
   apt-get update -qq
-  apt-get install -y -qq certbot
+  apt-get install -y -qq snapd
+  snap install --classic certbot 2>/dev/null || apt-get install -y -qq certbot
+  ln -sf /snap/bin/certbot /usr/bin/certbot 2>/dev/null || true
+fi
+# Garantir que certbot e executavel e nao e wrapper quebrado
+if ! certbot --version &>/dev/null; then
+  echo "ERRO: certbot instalado mas nao funcional."
+  echo "Tente: snap install --classic certbot && ln -sf /snap/bin/certbot /usr/bin/certbot"
+  exit 1
 fi
 
 # ──────────────────────────────────────────────────────────────
@@ -75,6 +83,7 @@ echo "    Certificado gerado em: /etc/letsencrypt/live/$DOMAIN/"
 # 5. Copiar para o volume Docker Compose
 # ──────────────────────────────────────────────────────────────
 echo "==> Copiando certificados para o volume Docker '$CERT_VOLUME'..."
+# Criar volume se não existir (primeira vez)
 docker volume create "$CERT_VOLUME" 2>/dev/null || true
 CERT_MOUNT=$(docker volume inspect "$CERT_VOLUME" --format '{{.Mountpoint}}')
 cp -rL /etc/letsencrypt/. "$CERT_MOUNT/"
@@ -89,23 +98,46 @@ cat > /usr/local/bin/renew-certs.sh <<RENEW
 set -euo pipefail
 APP_DIR="${APP_DIR}"
 CERT_VOLUME="${CERT_VOLUME}"
+
+# Parar nginx para liberar porta 80
 docker compose -f "\$APP_DIR/docker-compose.yml" stop nginx 2>/dev/null || true
+
+# Renovar certificado (só age se faltar < 30 dias)
 certbot renew --quiet --standalone
+
+# Backup do volume atual antes de destrui-lo — garante rollback se a copia falhar
+CERT_MOUNT_OLD=\$(docker volume inspect "\$CERT_VOLUME" --format '{{.Mountpoint}}' 2>/dev/null || echo "")
+BACKUP_DIR="/tmp/certbot-backup-\$(date +%s)"
+if [ -n "\$CERT_MOUNT_OLD" ] && [ -d "\$CERT_MOUNT_OLD" ]; then
+  mkdir -p "\$BACKUP_DIR"
+  cp -rL "\$CERT_MOUNT_OLD/." "\$BACKUP_DIR/" 2>/dev/null || true
+fi
+
+# Recriar volume e copiar novos certificados
 docker volume rm "\$CERT_VOLUME" 2>/dev/null || true
 docker volume create "\$CERT_VOLUME"
 CERT_MOUNT=\$(docker volume inspect "\$CERT_VOLUME" --format '{{.Mountpoint}}')
-cp -rL /etc/letsencrypt/. "\$CERT_MOUNT/"
+if ! cp -rL /etc/letsencrypt/. "\$CERT_MOUNT/"; then
+  echo "ERRO: falha ao copiar certificados. Restaurando backup..."
+  if [ -n "\$BACKUP_DIR" ] && [ -d "\$BACKUP_DIR" ]; then
+    cp -rL "\$BACKUP_DIR/." "\$CERT_MOUNT/"
+  fi
+fi
+[ -n "\$BACKUP_DIR" ] && rm -rf "\$BACKUP_DIR"
+
+# Reiniciar nginx com novo certificado
 docker compose -f "\$APP_DIR/docker-compose.yml" start nginx
 echo "Certificado renovado: \$(date)"
 RENEW
 chmod +x /usr/local/bin/renew-certs.sh
 
-# Adicionar ao cron somente se ainda nao existir
+# Cron 2x/semana (segunda e quinta, 03h) — Let's Encrypt recomenda verificacao frequente
+# para garantir renovacao dentro da janela de 30 dias antes do vencimento.
 if ! crontab -l 2>/dev/null | grep -q 'renew-certs'; then
-  (crontab -l 2>/dev/null || true; echo "0 3 * * 0 /usr/local/bin/renew-certs.sh >> /var/log/certbot-renew.log 2>&1") | crontab -
-  echo "    Cron de renovacao configurado (domingos 03h)."
+  (crontab -l 2>/dev/null || true; echo "0 3 * * 1,4 /usr/local/bin/renew-certs.sh >> /var/log/certbot-renew.log 2>&1") | crontab -
+  echo "    Cron de renovacao configurado (segunda e quinta, 03h)."
 else
-  echo "    Cron de renovacao ja existe."
+  echo "    Cron de renovacao ja existe (verifique se usa '* * 1,4' para 2x/semana)."
 fi
 
 # ──────────────────────────────────────────────────────────────

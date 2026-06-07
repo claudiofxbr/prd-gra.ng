@@ -1,6 +1,8 @@
 package ng.prdgra.controller;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import ng.prdgra.dto.PageResponse;
 import ng.prdgra.dto.PrdRequest;
@@ -10,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -17,14 +20,15 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/prds")
 @RequiredArgsConstructor
+@Validated
 public class PrdController {
 
     private final PrdService prdService;
 
     @GetMapping
     public ResponseEntity<PageResponse<PrdResponse>> list(
-            @RequestParam(defaultValue = "0")  int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "0")  @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @AuthenticationPrincipal UserDetails user) {
         return ResponseEntity.ok(prdService.listByUser(user.getUsername(), page, size));
     }

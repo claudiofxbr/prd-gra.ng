@@ -103,11 +103,15 @@ public class PrdService {
     }
 
     // Remove apenas as entradas de cache do usuário afetado, preservando cache dos demais.
+    // Fallback para cache.clear() garante comportamento correto se o provider mudar (ex.: Redis).
     private void evictUserCache(String userEmail) {
         var springCache = cacheManager.getCache("prds");
+        if (springCache == null) return;
         if (springCache instanceof CaffeineCache caffeineCache) {
             Cache<Object, Object> nativeCache = caffeineCache.getNativeCache();
             nativeCache.asMap().keySet().removeIf(k -> k instanceof String s && s.startsWith(userEmail + "|"));
+        } else {
+            springCache.clear();
         }
     }
 }

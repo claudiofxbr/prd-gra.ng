@@ -71,17 +71,19 @@ class PrdIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        // Token é entregue via Set-Cookie HttpOnly — extrai o valor do cookie prdgra_token
-        String setCookieHeader = result.getResponse().getHeader("Set-Cookie");
-        if (setCookieHeader != null && setCookieHeader.contains("prdgra_token=")) {
-            String cookiePart = java.util.Arrays.stream(setCookieHeader.split(";"))
-                    .map(String::trim)
-                    .filter(s -> s.startsWith("prdgra_token="))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException("Cookie prdgra_token não encontrado"));
-            return cookiePart.substring("prdgra_token=".length());
+        // Token é entregue via Set-Cookie HttpOnly — usa getHeaders() (plural) para obter
+        // todos os cookies, pois getHeader() retorna apenas o primeiro e o login emite dois
+        // (prdgra_token e prdgra_refresh). A ordem pode variar entre versões do Spring.
+        java.util.List<String> setCookieHeaders = result.getResponse().getHeaders("Set-Cookie");
+        for (String header : setCookieHeaders) {
+            for (String part : header.split(";")) {
+                String trimmed = part.trim();
+                if (trimmed.startsWith("prdgra_token=")) {
+                    return trimmed.substring("prdgra_token=".length());
+                }
+            }
         }
-        throw new IllegalStateException("Set-Cookie header ausente na resposta de login");
+        throw new IllegalStateException("Cookie prdgra_token não encontrado na resposta de login");
     }
 
     @Test

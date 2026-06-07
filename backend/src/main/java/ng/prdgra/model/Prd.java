@@ -3,8 +3,11 @@ package ng.prdgra.model;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 import ng.prdgra.model.converter.StringListConverter;
 
 import java.time.Instant;
@@ -14,10 +17,13 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "prds")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = {"user", "createdBy", "modifiedBy", "deletedBy"})
+@EqualsAndHashCode(of = "id")
 public class Prd {
 
     @Id

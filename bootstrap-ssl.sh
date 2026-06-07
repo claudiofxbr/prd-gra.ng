@@ -1,44 +1,66 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ==============================================================================
 # PRD-GRA.NG - Script de Bootstrap SSL para VPS Hostinger
 # ==============================================================================
-# Este script resolve o problema do "ovo e da galinha" (Nginx dependendo de 
-# certificados SSL que ainda não existem). Ele levanta um container temporário
+# Este script resolve o problema do "ovo e da galinha" (Nginx dependendo de
+# certificados SSL que ainda nao existem). Ele levanta um container temporario
 # standalone do Certbot para obter o primeiro certificado SSL antes de iniciar a stack.
 # ==============================================================================
 
-set -e
+set -euo pipefail
 
 # Cores para output
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # Sem cor
+NC='\033[0m'
 
 echo -e "${CYAN}==> PRD-GRA.NG SSL Bootstrapper ${NC}"
 
-# Carregar variáveis do .env se existir
+# Carregar variaveis do .env de forma segura — sem export $(xargs) que quebra
+# com valores contendo espacos, aspas ou caracteres especiais.
 if [ -f .env ]; then
-    echo -e "  [...] Carregando variáveis do arquivo .env..."
-    export $(grep -v '^#' .env | xargs)
+    echo -e "  [...] Carregando variaveis do arquivo .env..."
+    while IFS='=' read -r key value; do
+        # Ignorar comentarios, linhas vazias e keys invalidas
+        [[ -z "$key" || "$key" =~ ^# || ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && continue
+        # Remover aspas externas do valor se existirem
+        value="${value%\"}"
+        value="${value#\"}"
+        value="${value%\'}"
+        value="${value#\'}"
+        export "$key=$value"
+    done < .env
 else
-    echo -e "${RED}  [ERR] Arquivo .env não encontrado.${NC}"
-    echo -e "${YELLOW}  [!] Por favor, crie o arquivo .env e preencha as variáveis DOMAIN e EMAIL antes de rodar o bootstrap.${NC}"
+    echo -e "${RED}  [ERR] Arquivo .env nao encontrado.${NC}"
+    echo -e "${YELLOW}  [!] Crie o .env com DOMAIN e EMAIL antes de executar.${NC}"
     exit 1
 fi
 
-if [ -z "$DOMAIN" ]; then
-    echo -e "${RED}  [ERR] Variável DOMAIN não definida no .env.${NC}"
+if [ -z "${DOMAIN:-}" ]; then
+    echo -e "${RED}  [ERR] Variavel DOMAIN nao definida no .env.${NC}"
     exit 1
 fi
 
-EMAIL_CERTBOT=${EMAIL:-"admin@$DOMAIN"}
+EMAIL_CERTBOT="${EMAIL:-admin@$DOMAIN}"
 
-# Verificar se a porta 80 está em uso
-if lsof -Pi :80 -sTCP:LISTEN -t >/dev/null ; then
-    echo -e "${YELLOW}  [!] A porta 80 já está em uso. Parando serviços conflitantes temporariamente...${NC}"
+# Verificar se a porta 80 esta em uso — usa ss (disponivel em Ubuntu moderno) com fallback para netstat
+port80_in_use() {
+    if command -v ss &>/dev/null; then
+        ss -tlnp | grep -q ':80 '
+    elif command -v netstat &>/dev/null; then
+        netstat -tlnp 2>/dev/null | grep -q ':80 '
+    else
+        # Fallback: tentar conectar na porta
+        timeout 1 bash -c 'echo > /dev/tcp/127.0.0.1/80' 2>/dev/null
+    fi
+}
+
+if port80_in_use; then
+    echo -e "${YELLOW}  [!] Porta 80 em uso. Parando containers...${NC}"
     docker compose down || true
+    sleep 2
 fi
 
 echo -e "  [...] Solicitando certificado SSL para: ${GREEN}$DOMAIN${NC} (Email: $EMAIL_CERTBOT)"

@@ -16,47 +16,38 @@ function extractOrigin(urlWithPath) {
 const rawApiUrl  = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api'
 const apiOrigin  = extractOrigin(rawApiUrl)  // "http://localhost:8080"
 
-// connect-src: origem da API + websocket HMR em dev
-const connectSrc = isDev
-  ? `connect-src 'self' ${apiOrigin} ws://localhost:3000 wss://localhost:3000`
-  : `connect-src 'self' ${apiOrigin}`
+// connect-src: apenas para uso no CSP de prod (dev não recebe CSP)
+const connectSrc = `connect-src 'self' ${apiOrigin}`
 
-// Em dev o CSP omite script-src para não bloquear chunks dinâmicos do webpack HMR
-// e extensões do browser. Em prod aplica-se política restrita.
-const cspDirectives = isDev
-  ? [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' data: https://fonts.gstatic.com",
-      "img-src 'self' data: blob:",
-      connectSrc,
-      "frame-ancestors 'none'",
-    ]
-  : [
-      "default-src 'self'",
-      // 'unsafe-inline' removido: Next.js 14 App Router emite scripts como chunks externos,
-      // não como inline. Se quebrar em prod, adicionar nonce via middleware (ver CLAUDE.md).
-      "script-src 'self'",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' data: https://fonts.gstatic.com",
-      "img-src 'self' data:",
-      connectSrc,
-      "frame-ancestors 'none'",
-    ]
+// CSP só é aplicado em produção — em dev bloqueia extensões do browser e chunks HMR
+// sem oferecer nenhuma proteção real (ambiente local, sem dados reais em risco).
+// Next.js 14 App Router com standalone output serve chunks externos (não inline), por
+// isso 'unsafe-inline' em script-src pode ser omitido em prod com segurança.
+const cspDirectives = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval' 'inline-speculation-rules'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data:",
+  connectSrc,
+  "frame-ancestors 'none'",
+]
 
-const securityHeaders = [
+// Headers aplicados em todos os ambientes exceto o CSP (dev não recebe CSP)
+const baseHeaders = [
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
-  // DENY é consistente com frame-ancestors 'none' no CSP — SAMEORIGIN contradizia a política.
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-  {
-    key: 'Content-Security-Policy',
-    value: cspDirectives.join('; '),
-  },
 ]
+
+const securityHeaders = isDev
+  ? baseHeaders
+  : [
+      ...baseHeaders,
+      { key: 'Content-Security-Policy', value: cspDirectives.join('; ') },
+    ]
 
 const BASE_PATH = '/prd-gra.ng'
 
