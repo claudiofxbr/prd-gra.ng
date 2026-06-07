@@ -53,7 +53,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             var userOpt = userRepository.findByEmail(email);
             if (userOpt.isEmpty()) {
-                log.warn("JWT válido mas usuário não encontrado: {}", email);
+                log.warn("JWT válido mas usuário não encontrado (email omitido por segurança)");
                 sendUnauthorized(response, "Usuário não encontrado");
                 return;
             }
