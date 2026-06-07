@@ -224,11 +224,19 @@ function Push-GithubSecrets {
         @{ Key = "TRUSTED_PROXY_IP";     Val = $Cfg.TrustedProxyIp }
     )
 
-    $ok = 0
-    foreach ($p in $pairs) {
-        $p.Val | gh secret set $p.Key --repo $Cfg.GhRepo 2>$null
-        if ($LASTEXITCODE -eq 0) { Write-Ok "Secret: $($p.Key)"; $ok++ }
-        else                     { Write-Fail "Falha: $($p.Key)" }
+    # Usa --body-file para gravar cada secret — evita que '#' em senhas seja
+    # truncado pelo shell ao passar o valor via pipe ou argumento direto.
+    $ok  = 0
+    $tmp = [System.IO.Path]::GetTempFileName()
+    try {
+        foreach ($p in $pairs) {
+            [System.IO.File]::WriteAllText($tmp, $p.Val, [System.Text.Encoding]::UTF8)
+            gh secret set $p.Key --repo $Cfg.GhRepo --body-file $tmp 2>$null
+            if ($LASTEXITCODE -eq 0) { Write-Ok "Secret: $($p.Key)"; $ok++ }
+            else                     { Write-Fail "Falha: $($p.Key)" }
+        }
+    } finally {
+        Remove-Item $tmp -ErrorAction SilentlyContinue
     }
     Write-Host ""
     Write-Ok "$ok/$($pairs.Count) secrets configurados."
@@ -844,7 +852,10 @@ function Step-UpdateProxyIp {
 
     # Atualiza Secret no GitHub via gh CLI se disponivel
     if (Get-Command gh -ErrorAction SilentlyContinue) {
-        $newIp | gh secret set TRUSTED_PROXY_IP --repo $script:Config.GhRepo 2>$null
+        $tmpIp = [System.IO.Path]::GetTempFileName()
+        try { [System.IO.File]::WriteAllText($tmpIp, $newIp, [System.Text.Encoding]::UTF8)
+              gh secret set TRUSTED_PROXY_IP --repo $script:Config.GhRepo --body-file $tmpIp 2>$null
+        } finally { Remove-Item $tmpIp -ErrorAction SilentlyContinue }
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "Secret TRUSTED_PROXY_IP atualizado no GitHub automaticamente."
         } else {
