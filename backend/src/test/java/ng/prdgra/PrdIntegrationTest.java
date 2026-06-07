@@ -56,14 +56,14 @@ class PrdIntegrationTest {
     }
 
     private String registerAndLogin(String email) throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Test User","email":"%s","password":"password123"}
                                 """.formatted(email)))
                 .andExpect(status().isOk());
 
-        var result = mockMvc.perform(post("/api/auth/login")
+        var result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"%s","password":"password123"}
@@ -90,7 +90,7 @@ class PrdIntegrationTest {
     void fullFlow_registerLoginCreateListPrd() throws Exception {
         String token = registerAndLogin("int@test.com");
 
-        mockMvc.perform(post("/api/prds")
+        mockMvc.perform(post("/prds")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -101,7 +101,7 @@ class PrdIntegrationTest {
                 .andExpect(jsonPath("$.title").value("My PRD"))
                 .andExpect(jsonPath("$.status").value("DRAFT"));
 
-        mockMvc.perform(get("/api/prds")
+        mockMvc.perform(get("/prds")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
@@ -112,7 +112,7 @@ class PrdIntegrationTest {
     void updatePrd_changesStatusAndTitle() throws Exception {
         String token = registerAndLogin("update@test.com");
 
-        var createResult = mockMvc.perform(post("/api/prds")
+        var createResult = mockMvc.perform(post("/prds")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -125,7 +125,7 @@ class PrdIntegrationTest {
                 .readTree(createResult.getResponse().getContentAsString())
                 .get("id").asText();
 
-        mockMvc.perform(put("/api/prds/" + id)
+        mockMvc.perform(put("/prds/" + id)
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -140,7 +140,7 @@ class PrdIntegrationTest {
     void deletePrd_removesFromList() throws Exception {
         String token = registerAndLogin("delete@test.com");
 
-        var createResult = mockMvc.perform(post("/api/prds")
+        var createResult = mockMvc.perform(post("/prds")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -153,11 +153,11 @@ class PrdIntegrationTest {
                 .readTree(createResult.getResponse().getContentAsString())
                 .get("id").asText();
 
-        mockMvc.perform(delete("/api/prds/" + id)
+        mockMvc.perform(delete("/prds/" + id)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/prds")
+        mockMvc.perform(get("/prds")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
@@ -170,7 +170,7 @@ class PrdIntegrationTest {
         String tokenA = registerAndLogin("userA@test.com");
         String tokenB = registerAndLogin("userB@test.com");
 
-        var createResult = mockMvc.perform(post("/api/prds")
+        var createResult = mockMvc.perform(post("/prds")
                         .header("Authorization", "Bearer " + tokenA)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -183,7 +183,7 @@ class PrdIntegrationTest {
                 .readTree(createResult.getResponse().getContentAsString())
                 .get("id").asText();
 
-        mockMvc.perform(get("/api/prds/" + id)
+        mockMvc.perform(get("/prds/" + id)
                         .header("Authorization", "Bearer " + tokenB))
                 .andExpect(status().isNotFound());
     }
@@ -192,7 +192,7 @@ class PrdIntegrationTest {
     void register_duplicateEmail_returnsConflict() throws Exception {
         registerAndLogin("dup@test.com");
 
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Other","email":"dup@test.com","password":"password123"}
@@ -204,7 +204,7 @@ class PrdIntegrationTest {
     void login_wrongPassword_returnsUnauthorized() throws Exception {
         registerAndLogin("wrong@test.com");
 
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"wrong@test.com","password":"senhaErrada"}
