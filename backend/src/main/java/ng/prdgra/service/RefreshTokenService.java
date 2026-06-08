@@ -76,6 +76,15 @@ public class RefreshTokenService {
         refreshTokenRepository.revokeAllByUserId(user.getId());
     }
 
+    // Revoga todos os tokens do usuário associado ao token, sem validar se está ativo.
+    // Usado no logout: mesmo tokens expirados/revogados devem limpar a sessão.
+    @Transactional
+    public void revokeAllByTokenHash(String plainToken) {
+        String hash = sha256Hex(plainToken);
+        refreshTokenRepository.findUserByTokenHash(hash)
+                .ifPresent(user -> refreshTokenRepository.revokeAllByUserId(user.getId()));
+    }
+
     // Roda diariamente às 03:00 UTC — remove tokens expirados e revogados do banco.
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional

@@ -62,15 +62,13 @@ public class PrdService {
 
     @Transactional
     public PrdResponse update(UUID id, PrdRequest request, String userEmail) {
-        User userRef = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException(userEmail));
         var prd = prdRepository.findByIdAndUserEmail(id, userEmail)
                 .orElseThrow(() -> new NoSuchElementException("PRD não encontrado"));
         prd.setTitle(request.title());
         prd.setDescription(request.description());
         prd.setStack(request.stack());
         prd.setObjectives(request.objectives());
-        prd.setModifiedBy(userRef);
+        prd.setModifiedBy(prd.getUser());
         if (request.status() != null) {
             try {
                 prd.setStatus(Prd.PrdStatus.valueOf(request.status()));
@@ -86,12 +84,10 @@ public class PrdService {
 
     @Transactional
     public void delete(UUID id, String userEmail) {
-        User userRef = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException(userEmail));
         var prd = prdRepository.findByIdAndUserEmail(id, userEmail)
                 .orElseThrow(() -> new NoSuchElementException("PRD não encontrado"));
         prd.setDeletedAt(Instant.now());
-        prd.setDeletedBy(userRef);
+        prd.setDeletedBy(prd.getUser());
         prdRepository.save(prd);
         evictUserCache(userEmail);
     }

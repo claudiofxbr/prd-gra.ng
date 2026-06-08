@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 5     # Neon free tier: max 5 conexões simultâneas
+      minimum-idle: 1
+
+management:
+  endpoint:
+    health:
+      show-details: never      # Não expor detalhes de saúde em produção
+
+logging:
+  level:
+    ng.prdgra: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN    # Garante que show-sql não vaze queries em prod

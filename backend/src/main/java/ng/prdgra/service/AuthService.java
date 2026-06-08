@@ -60,12 +60,9 @@ public class AuthService {
     @Transactional
     public void logout(String plainRefreshToken) {
         if (plainRefreshToken != null && !plainRefreshToken.isBlank()) {
-            try {
-                var user = refreshTokenService.validateAndRotate(plainRefreshToken);
-                refreshTokenService.revokeAll(user);
-            } catch (IllegalArgumentException ignored) {
-                // Token já expirado/inválido — logout continua normalmente
-            }
+            // Revoga todos os tokens sem validar atividade — logout deve funcionar
+            // mesmo com token expirado ou já revogado.
+            refreshTokenService.revokeAllByTokenHash(plainRefreshToken);
         }
     }
 }

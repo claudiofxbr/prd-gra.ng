@@ -15,6 +15,10 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
+    // Usado no logout: busca sem validar atividade para revogar mesmo tokens já expirados
+    @Query("SELECT r.user FROM RefreshToken r WHERE r.tokenHash = :hash")
+    Optional<ng.prdgra.model.User> findUserByTokenHash(@Param("hash") String hash);
+
     @Modifying
     @Transactional
     @Query("UPDATE RefreshToken r SET r.revokedAt = CURRENT_TIMESTAMP WHERE r.user.id = :userId AND r.revokedAt IS NULL")

@@ -35,8 +35,12 @@ public class RefreshToken {
     private Instant revokedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    @Builder.Default
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
+
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) createdAt = Instant.now();
+    }
 
     public boolean isActive() {
         return revokedAt == null && Instant.now().isBefore(expiresAt);

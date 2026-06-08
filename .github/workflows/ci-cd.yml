@@ -19,6 +19,7 @@ jobs:
   lint-frontend:
     name: Lint & TypeScript Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
@@ -37,6 +38,7 @@ jobs:
   test-backend:
     name: Backend Tests (Unit + Integration)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -48,9 +50,9 @@ jobs:
           distribution: temurin
           cache: maven
       - name: Run unit tests
-        run: mvn test -Dspring.profiles.active=test
+        run: ./mvnw test -Dspring.profiles.active=test
       - name: Run integration tests (Testcontainers)
-        run: mvn verify -Pfailsafe -Dspring.profiles.active=test
+        run: ./mvnw verify -Pfailsafe -Dspring.profiles.active=test
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -64,6 +66,7 @@ jobs:
   build-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [lint-frontend, test-backend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
@@ -112,6 +115,7 @@ jobs:
     needs: build-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -142,6 +146,8 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # command_timeout: tempo máximo por conexão SSH (deploy + smoke test)
+          command_timeout: 12m
           envs: DATABASE_URL,JWT_SECRET,NEXT_PUBLIC_API_URL,CORS_ALLOWED_ORIGINS,DOMAIN,TRUSTED_PROXY_IP,GHCR_REPO,IMAGE_TAG,DEPLOY_TOKEN,DEPLOY_ACTOR
           script: |
             set -euo pipefail
@@ -150,6 +156,7 @@ jobs:
             # Gravar .env com valores entre aspas duplas — obrigatório para preservar '#' em senhas
             # (Docker Compose interpreta '#' sem aspas como comentário no .env).
             # printf %s garante que '%' em valores não seja interpretado como diretiva de formato.
+            ENV_FILE=/opt/prd-gra/.env
             {
               printf 'DATABASE_URL="%s"\n'          "$DATABASE_URL"
               printf 'JWT_SECRET="%s"\n'             "$JWT_SECRET"
@@ -159,28 +166,30 @@ jobs:
               printf 'TRUSTED_PROXY_IP="%s"\n'       "$TRUSTED_PROXY_IP"
               printf 'GHCR_REPO="%s"\n'              "$GHCR_REPO"
               printf 'IMAGE_TAG="%s"\n'              "$IMAGE_TAG"
-            } > /opt/prd-gra/.env
-            chmod 600 /opt/prd-gra/.env
+            } > "$ENV_FILE"
+            chmod 600 "$ENV_FILE"
 
             # Login no GHCR
             echo "$DEPLOY_TOKEN" | docker login ghcr.io -u "$DEPLOY_ACTOR" --password-stdin
 
             # Registrar imagem atual do backend para rollback (trata primeiro deploy sem container)
+            # Captura o SHA da imagem em execução ANTES do pull — o pull sobrescreve :latest
+            PREVIOUS_SHA=""
             BACKEND_CID=$(docker compose ps -q backend 2>/dev/null || true)
             if [ -n "$BACKEND_CID" ]; then
-              PREVIOUS_TAG=$(docker inspect --format='{{index .Config.Image}}' "$BACKEND_CID" 2>/dev/null || echo "")
-            else
-              PREVIOUS_TAG=""
+              RUNNING_IMAGE=$(docker inspect --format='{{index .Config.Image}}' "$BACKEND_CID" 2>/dev/null || echo "")
+              # Extrai o SHA do formato ghcr.io/owner/repo/backend:<sha> — usa apenas hex lowercase
+              PREVIOUS_SHA=$(echo "$RUNNING_IMAGE" | grep -oE '[0-9a-f]{40}$' || echo "")
             fi
 
             # Pull das novas imagens
-            docker compose --env-file /opt/prd-gra/.env pull
+            docker compose --env-file "$ENV_FILE" pull
 
             # Rolling deploy
-            docker compose --env-file /opt/prd-gra/.env up -d --remove-orphans
+            docker compose --env-file "$ENV_FILE" up -d --remove-orphans
 
-            # Smoke test: aguardar backend via health endpoint interno (sem depender de TLS/nginx)
-            # Usa wget direto no container para isolar falhas de TLS/DNS
+            # ── Smoke test backend ─────────────────────────────────────────
+            # Executa wget DENTRO do container (isola falhas de TLS/DNS/rede externa)
             echo "Aguardando backend iniciar (max 60s)..."
             SUCCESS=false
             for i in $(seq 1 20); do
@@ -188,7 +197,7 @@ jobs:
                 wget -qO- http://localhost:8080/api/actuator/health 2>/dev/null \
                 | grep -o '"status":"[^"]*"' | head -1 || echo "")
               if echo "$STATUS" | grep -q '"UP"'; then
-                echo "Smoke test aprovado na tentativa $i (backend UP)."
+                echo "Backend smoke test aprovado na tentativa $i."
                 SUCCESS=true
                 break
               fi
@@ -196,11 +205,13 @@ jobs:
               sleep 3
             done
 
-            # Smoke test do frontend: verifica se o sub-path /prd-gra.ng/ responde
+            # ── Smoke test frontend ────────────────────────────────────────
+            # Executa wget DENTRO do container frontend (porta interna 3000, sem depender do nginx)
             echo "Verificando frontend no sub-path /prd-gra.ng/ ..."
             FRONT_OK=false
             for i in $(seq 1 10); do
-              HTTP_CODE=$(wget -qO- --server-response http://localhost:3000/prd-gra.ng/ 2>&1 \
+              HTTP_CODE=$(docker compose exec -T frontend \
+                wget -qO /dev/null --server-response http://localhost:3000/prd-gra.ng/ 2>&1 \
                 | grep "HTTP/" | tail -1 | awk '{print $2}' || echo "")
               if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "308" ]; then
                 echo "Frontend OK (HTTP $HTTP_CODE) na tentativa $i."
@@ -211,28 +222,37 @@ jobs:
               sleep 3
             done
             if [ "$FRONT_OK" = "false" ]; then
-              echo "Aviso: frontend nao respondeu no sub-path — verifique os logs do container frontend."
+              echo "AVISO: frontend nao respondeu no sub-path — verificando logs..."
+              docker compose logs --tail=50 frontend || true
             fi
 
+            # ── Rollback se backend falhou ─────────────────────────────────
             if [ "$SUCCESS" = "false" ]; then
               echo "Smoke test FALHOU. Iniciando rollback..."
-              if [ -n "$PREVIOUS_TAG" ]; then
-                # Extrair SHA com sed (portavel — nao usa grep -oP/PCRE)
-                PREV_SHA=$(echo "$PREVIOUS_TAG" | sed 's/.*:\([a-f0-9]*\)$/\1/')
-                if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" != "$PREVIOUS_TAG" ]; then
-                  sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREV_SHA}/" /opt/prd-gra/.env
-                  docker compose --env-file /opt/prd-gra/.env pull
-                  docker compose --env-file /opt/prd-gra/.env up -d --remove-orphans
-                  echo "Rollback para ${PREV_SHA} concluido."
-                else
-                  echo "SHA anterior nao identificado em: $PREVIOUS_TAG"
-                fi
+              docker compose logs --tail=100 backend || true
+              if [ -n "$PREVIOUS_SHA" ]; then
+                echo "Revertendo para SHA anterior: ${PREVIOUS_SHA}"
+                # Reescreve o .env completo com IMAGE_TAG anterior (evita sed in-place com regex frágil)
+                {
+                  printf 'DATABASE_URL="%s"\n'          "$DATABASE_URL"
+                  printf 'JWT_SECRET="%s"\n'             "$JWT_SECRET"
+                  printf 'NEXT_PUBLIC_API_URL="%s"\n'    "$NEXT_PUBLIC_API_URL"
+                  printf 'CORS_ALLOWED_ORIGINS="%s"\n'   "$CORS_ALLOWED_ORIGINS"
+                  printf 'DOMAIN="%s"\n'                 "$DOMAIN"
+                  printf 'TRUSTED_PROXY_IP="%s"\n'       "$TRUSTED_PROXY_IP"
+                  printf 'GHCR_REPO="%s"\n'              "$GHCR_REPO"
+                  printf 'IMAGE_TAG="%s"\n'              "$PREVIOUS_SHA"
+                } > "$ENV_FILE"
+                chmod 600 "$ENV_FILE"
+                docker compose --env-file "$ENV_FILE" pull
+                docker compose --env-file "$ENV_FILE" up -d --remove-orphans
+                echo "Rollback para ${PREVIOUS_SHA} concluido."
               else
-                echo "Nenhuma versao anterior disponivel para rollback (primeiro deploy)."
+                echo "Nenhuma versao anterior disponivel para rollback (primeiro deploy ou SHA nao identificado)."
               fi
               exit 1
             fi
 
             # Limpeza de imagens antigas (mantém ultimas 72h)
             docker image prune -f --filter "until=72h"
-            echo "Deploy concluido: SHA=$IMAGE_TAG"
+            echo "Deploy concluido com sucesso: SHA=$IMAGE_TAG"

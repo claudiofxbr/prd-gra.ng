@@ -54,13 +54,14 @@ function Assert-Tool {
 function Read-Input {
     param([string]$Label, [string]$Default = "", [switch]$Secret)
 
-    if ($Default) {
-        Write-Host "  ${C_CYAN}$Label${C_RESET} ${C_DIM}[Enter = $Default]${C_RESET}: " -NoNewline
-    } else {
-        Write-Host "  ${C_CYAN}$Label${C_RESET}: " -NoNewline
-    }
-
     while ($true) {
+        # Prompt exibido a cada iteracao — garante que hint e Label aparecem mesmo apos erro
+        if ($Default) {
+            Write-Host "  ${C_CYAN}$Label${C_RESET} ${C_DIM}[Enter = $Default]${C_RESET}: " -NoNewline
+        } else {
+            Write-Host "  ${C_CYAN}$Label${C_RESET}: " -NoNewline
+        }
+
         if ($Secret) {
             $ss  = Read-Host -AsSecureString
             $val = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
@@ -73,7 +74,6 @@ function Read-Input {
         if ($val)                    { return $val }
 
         Write-Host "  ${C_RED}Campo obrigatorio. Tente novamente.${C_RESET}"
-        Write-Host "  ${C_CYAN}$Label${C_RESET}: " -NoNewline
     }
 }
 
@@ -146,8 +146,14 @@ function Request-Secrets {
 
     Write-Host ""
     Write-Host "    ${C_DIM}DATABASE_URL: string de conexao do Neon PostgreSQL${C_RESET}"
-    Write-Host "    ${C_DIM}Formato: postgresql://user:senha@ep-xxx.neon.tech/db?sslmode=verify-full${C_RESET}"
-    $dbUrl = Read-Input "DATABASE_URL"
+    Write-Host "    ${C_DIM}Formato: jdbc:postgresql://ep-xxx.neon.tech/db?user=u&password=p&sslmode=require${C_RESET}"
+    $dbUrl = ""
+    while ($true) {
+        $dbUrl = Read-Input "DATABASE_URL"
+        # Aceita prefixo jdbc: (Spring Boot) ou postgresql:// (URL direta)
+        if ($dbUrl -match "^(jdbc:)?postgresql://") { break }
+        Write-Fail "DATABASE_URL invalida. Deve comecar com 'jdbc:postgresql://' ou 'postgresql://'."
+    }
 
     Write-Host ""
     Write-Host "    ${C_DIM}JWT_SECRET: chave para assinar tokens JWT${C_RESET}"
@@ -224,19 +230,14 @@ function Push-GithubSecrets {
         @{ Key = "TRUSTED_PROXY_IP";     Val = $Cfg.TrustedProxyIp }
     )
 
-    # Usa --body-file para gravar cada secret — evita que '#' em senhas seja
-    # truncado pelo shell ao passar o valor via pipe ou argumento direto.
-    $ok  = 0
-    $tmp = [System.IO.Path]::GetTempFileName()
-    try {
-        foreach ($p in $pairs) {
-            [System.IO.File]::WriteAllText($tmp, $p.Val, [System.Text.Encoding]::UTF8)
-            gh secret set $p.Key --repo $Cfg.GhRepo --body-file $tmp 2>$null
-            if ($LASTEXITCODE -eq 0) { Write-Ok "Secret: $($p.Key)"; $ok++ }
-            else                     { Write-Fail "Falha: $($p.Key)" }
-        }
-    } finally {
-        Remove-Item $tmp -ErrorAction SilentlyContinue
+    # Usa -b (--body) para passar o valor diretamente — compatível com gh 2.x.
+    # O gh CLI encripta o valor localmente antes de enviar para a API do GitHub,
+    # portanto '#', '$', espaços e outros caracteres especiais são preservados sem escaping.
+    $ok = 0
+    foreach ($p in $pairs) {
+        gh secret set $p.Key --repo $Cfg.GhRepo -b $p.Val 2>$null
+        if ($LASTEXITCODE -eq 0) { Write-Ok "Secret: $($p.Key)"; $ok++ }
+        else                     { Write-Fail "Falha: $($p.Key)" }
     }
     Write-Host ""
     Write-Ok "$ok/$($pairs.Count) secrets configurados."
@@ -852,10 +853,7 @@ function Step-UpdateProxyIp {
 
     # Atualiza Secret no GitHub via gh CLI se disponivel
     if (Get-Command gh -ErrorAction SilentlyContinue) {
-        $tmpIp = [System.IO.Path]::GetTempFileName()
-        try { [System.IO.File]::WriteAllText($tmpIp, $newIp, [System.Text.Encoding]::UTF8)
-              gh secret set TRUSTED_PROXY_IP --repo $script:Config.GhRepo --body-file $tmpIp 2>$null
-        } finally { Remove-Item $tmpIp -ErrorAction SilentlyContinue }
+        gh secret set TRUSTED_PROXY_IP --repo $script:Config.GhRepo -b $newIp 2>$null
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "Secret TRUSTED_PROXY_IP atualizado no GitHub automaticamente."
         } else {
