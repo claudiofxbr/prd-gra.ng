@@ -54,6 +54,7 @@ const BASE_PATH = '/prd-gra.ng'
 const nextConfig = {
   output: isDev ? undefined : 'standalone',
   basePath: BASE_PATH,
+  skipTrailingSlashRedirect: true,
   env: {
     NEXT_PUBLIC_BASE_PATH: BASE_PATH,
   },
