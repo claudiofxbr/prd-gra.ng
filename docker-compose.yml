@@ -2,9 +2,10 @@ services:
   nginx:
     image: ${GHCR_REPO}/nginx:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    # Porta 8081 interna — Traefik do EasyPanel ocupa 80/443 nesta VPS.
+    # O Traefik roteia xavierbr-vps.tech -> nginx:8081 via traefik-config.yml.
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8081:8081"
     environment:
       DOMAIN: ${DOMAIN}
     volumes:
@@ -13,6 +14,7 @@ services:
     networks:
       - frontend-net
       - backend-net
+      - easypanel
     depends_on:
       frontend:
         condition: service_healthy
@@ -68,3 +70,7 @@ networks:
   # backend-net: permite saída à internet — necessário para o backend acessar o Neon (PostgreSQL remoto)
   backend-net:
     driver: bridge
+
+  # easypanel: rede externa gerenciada pelo EasyPanel/Traefik — permite roteamento pelo Traefik
+  easypanel:
+    external: true
