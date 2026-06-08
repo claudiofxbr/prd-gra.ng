@@ -96,8 +96,7 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ env.IMAGE_FRONTEND }}:${{ github.sha }},${{ env.IMAGE_FRONTEND }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
 
       - name: Build & push nginx
         uses: docker/build-push-action@v6
