@@ -30,7 +30,7 @@ services:
     networks:
       - frontend-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null --spider http://127.0.0.1:3000/prd-gra.ng/ 2>&1 | grep -qE 'HTTP/|200|308' || exit 1"]
+      test: ["CMD-SHELL", "printf 'GET /prd-gra.ng/ HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' | nc -w3 127.0.0.1 3000 | head -1 | grep -qE 'HTTP/1\\.[01] [2-4]'"]
       interval: 20s
       timeout: 5s
       retries: 5
