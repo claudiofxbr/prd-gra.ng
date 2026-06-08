@@ -24,7 +24,12 @@ export default function EditPrdPage() {
     ;(async () => {
       try {
         const res = await api.prds.get(id)
-        if (!cancelled && res) setPrd(res)
+        if (cancelled) return
+        if (!res) {
+          setFetchError('Sessão expirada. Faça login novamente.')
+        } else {
+          setPrd(res)
+        }
       } catch (e) {
         if (!cancelled) setFetchError(e instanceof Error ? e.message : 'Erro ao carregar PRD')
       } finally {

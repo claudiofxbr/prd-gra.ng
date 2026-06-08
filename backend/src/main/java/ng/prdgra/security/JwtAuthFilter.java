@@ -32,6 +32,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
+    // Endpoints públicos não precisam de token válido — o filtro os ignora completamente.
+    // /auth/refresh é crítico: o access token pode estar expirado (é justamente o motivo do refresh),
+    // então processar o cookie expirado resultaria em 401 antes de chegar ao AuthController.
+    @Override
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.equals("/auth/login")
+            || path.equals("/auth/register")
+            || path.equals("/auth/refresh")
+            || path.equals("/auth/logout")
+            || path.startsWith("/actuator/");
+    }
+
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
                                     @NonNull HttpServletResponse response,
