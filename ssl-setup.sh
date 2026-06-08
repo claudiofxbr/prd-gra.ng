@@ -87,6 +87,18 @@ echo "==> Copiando certificados para o volume Docker '$CERT_VOLUME'..."
 docker volume create "$CERT_VOLUME" 2>/dev/null || true
 CERT_MOUNT=$(docker volume inspect "$CERT_VOLUME" --format '{{.Mountpoint}}')
 cp -rL /etc/letsencrypt/. "$CERT_MOUNT/"
+
+# O Certbot cria diretorios numerados (xavierbr-vps.tech-0001, -0002...) a cada nova emissao.
+# O nginx.conf referencia apenas '${DOMAIN}' sem sufixo. Garantir que o diretorio base
+# sempre contenha o certificado mais recente (Let's Encrypt), nao um autoassinado anterior.
+LATEST_CERT_DIR=$(ls -dt /etc/letsencrypt/live/${DOMAIN}* 2>/dev/null | grep -v "^/etc/letsencrypt/live/${DOMAIN}$" | head -1)
+if [ -n "$LATEST_CERT_DIR" ]; then
+  echo "    Sincronizando cert mais recente: $LATEST_CERT_DIR -> ${DOMAIN}/"
+  mkdir -p "$CERT_MOUNT/live/${DOMAIN}"
+  for f in fullchain.pem privkey.pem cert.pem chain.pem; do
+    [ -f "$LATEST_CERT_DIR/$f" ] && cp "$LATEST_CERT_DIR/$f" "$CERT_MOUNT/live/${DOMAIN}/$f"
+  done
+fi
 echo "    Certificados copiados para: $CERT_MOUNT"
 
 # ──────────────────────────────────────────────────────────────
