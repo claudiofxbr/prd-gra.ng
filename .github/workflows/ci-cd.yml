@@ -119,15 +119,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy docker-compose to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "docker-compose.yml"
-          target: "/opt/prd-gra"
-
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -142,16 +133,29 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
           DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_ACTOR: ${{ github.actor }}
+          GH_REPOSITORY: ${{ github.repository }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           # command_timeout: tempo máximo por conexão SSH (deploy + smoke test)
           command_timeout: 12m
-          envs: DATABASE_URL,JWT_SECRET,NEXT_PUBLIC_API_URL,CORS_ALLOWED_ORIGINS,DOMAIN,TRUSTED_PROXY_IP,GHCR_REPO,IMAGE_TAG,DEPLOY_TOKEN,DEPLOY_ACTOR
+          envs: DATABASE_URL,JWT_SECRET,NEXT_PUBLIC_API_URL,CORS_ALLOWED_ORIGINS,DOMAIN,TRUSTED_PROXY_IP,GHCR_REPO,IMAGE_TAG,DEPLOY_TOKEN,DEPLOY_ACTOR,GH_REPOSITORY
+          script_stop: true
           script: |
             set -euo pipefail
+            mkdir -p /opt/prd-gra
             cd /opt/prd-gra
+
+            # Atualizar docker-compose.yml via git clone do repositório (evita SCP)
+            # GH_REPOSITORY = "claudiofxbr/prd-gra.ng" (owner/repo)
+            git clone --depth=1 --branch=main \
+              https://x-access-token:${DEPLOY_TOKEN}@github.com/${GH_REPOSITORY}.git \
+              /tmp/prd-gra-repo 2>/dev/null || true
+            if [ -f /tmp/prd-gra-repo/docker-compose.yml ]; then
+              cp /tmp/prd-gra-repo/docker-compose.yml /opt/prd-gra/docker-compose.yml
+              rm -rf /tmp/prd-gra-repo
+            fi
 
             # Gravar .env com valores entre aspas duplas — obrigatório para preservar '#' em senhas
             # (Docker Compose interpreta '#' sem aspas como comentário no .env).
@@ -211,10 +215,10 @@ jobs:
             FRONT_OK=false
             for i in $(seq 1 10); do
               HTTP_CODE=$(docker compose exec -T frontend \
-                wget -qO /dev/null --server-response http://localhost:3000/prd-gra.ng/ 2>&1 \
+                wget -qO /dev/null --server-response http://127.0.0.1:3000/prd-gra.ng/ 2>&1 \
                 | grep "HTTP/" | tail -1 | awk '{print $2}' || echo "")
-              if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "308" ]; then
-                echo "Frontend OK (HTTP $HTTP_CODE) na tentativa $i."
+              if [ "$HTTP_CODE" = "200" ]; then
+                echo "Frontend OK (HTTP 200) na tentativa $i."
                 FRONT_OK=true
                 break
               fi
