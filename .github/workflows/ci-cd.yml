@@ -256,6 +256,12 @@ jobs:
               exit 1
             fi
 
+            # Atualizar Traefik com o IP atual do nginx na rede easypanel
+            NGINX_IP=$(docker inspect prd-gra-nginx-1 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' 2>/dev/null || echo "")
+            if [ -n "$NGINX_IP" ] && [ -f /etc/easypanel/traefik/config/main.yaml ]; then
+              python3 -c "import json; f=open('/etc/easypanel/traefik/config/main.yaml'); cfg=json.load(f); f.close(); cfg['http']['services']['prd-gra-nginx']['loadBalancer']['servers'][0]['url']='http://$NGINX_IP:8081'; f=open('/etc/easypanel/traefik/config/main.yaml','w'); json.dump(cfg,f,indent=2); f.close(); print('Traefik atualizado para $NGINX_IP:8081')" 2>/dev/null || echo "Aviso: nao foi possivel atualizar Traefik"
+            fi
+
             # Limpeza de imagens antigas (mantém ultimas 72h)
             docker image prune -f --filter "until=72h"
             echo "Deploy concluido com sucesso: SHA=$IMAGE_TAG"
