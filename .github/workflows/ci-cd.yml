@@ -285,4 +285,84 @@ jobs:
 
             # Limpeza de imagens antigas (mantém ultimas 72h)
             docker image prune -f --filter "until=72h"
+
+            # ── Smoke test externo via domínio público ─────────────────────
+            # Valida que o Traefik está roteando corretamente para o app
+            echo "Smoke test externo: https://${DOMAIN}/api/actuator/health ..."
+            EXT_OK=false
+            for i in $(seq 1 6); do
+              EXT_STATUS=$(wget -qO- --timeout=10 "https://${DOMAIN}/api/actuator/health" 2>/dev/null \
+                | grep -o '"status":"[^"]*"' | head -1 || echo "")
+              if echo "$EXT_STATUS" | grep -q '"UP"'; then
+                echo "Smoke test externo aprovado na tentativa $i."
+                EXT_OK=true
+                break
+              fi
+              echo "Tentativa $i: $EXT_STATUS — aguardando 5s..."
+              sleep 5
+            done
+            if [ "$EXT_OK" = "false" ]; then
+              echo "AVISO: smoke test externo falhou — Traefik ou DNS pode estar desatualizado."
+              echo "App interno OK. Verificar manualmente: https://${DOMAIN}/prd-gra.ng/"
+            fi
+
             echo "Deploy concluido com sucesso: SHA=$IMAGE_TAG"
+
+  # ─────────────────────────────────────────────────────────────
+  e2e-smoke:
+    name: E2E Smoke — Endpoint Público
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 5
+    steps:
+      - name: Aguardar estabilização (15s)
+        run: sleep 15
+
+      - name: Smoke — API health público
+        env:
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          echo "Testando https://${DOMAIN}/api/actuator/health ..."
+          for i in $(seq 1 6); do
+            STATUS=$(curl -sf --max-time 10 "https://${DOMAIN}/api/actuator/health" \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
+            if [ "$STATUS" = "UP" ]; then
+              echo "API health: UP (tentativa $i)"
+              break
+            fi
+            echo "Tentativa $i: '$STATUS' — aguardando 5s..."
+            sleep 5
+            if [ "$i" = "6" ]; then
+              echo "ERRO: API não respondeu UP após 6 tentativas."
+              exit 1
+            fi
+          done
+
+      - name: Smoke — Frontend acessível
+        env:
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          echo "Testando https://${DOMAIN}/prd-gra.ng/ ..."
+          HTTP_CODE=$(curl -o /dev/null -sw "%{http_code}" --max-time 15 \
+            --location "https://${DOMAIN}/prd-gra.ng/" 2>/dev/null || echo "000")
+          echo "HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "ERRO: frontend retornou HTTP $HTTP_CODE (esperado 200)."
+            exit 1
+          fi
+          echo "Frontend OK: HTTP 200"
+
+      - name: Smoke — Redirect raiz
+        env:
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          echo "Testando redirect https://${DOMAIN}/ → /prd-gra.ng/ ..."
+          REDIRECT_LOC=$(curl -o /dev/null -sw "%{redirect_url}" --max-time 10 \
+            "https://${DOMAIN}/" 2>/dev/null || echo "")
+          echo "Redirect para: $REDIRECT_LOC"
+          if ! echo "$REDIRECT_LOC" | grep -q "prd-gra.ng"; then
+            echo "AVISO: redirect da raiz não aponta para /prd-gra.ng/ — verificar nginx."
+          else
+            echo "Redirect OK"
+          fi
