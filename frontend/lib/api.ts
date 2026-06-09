@@ -97,22 +97,6 @@ export const api = {
       apiFetch<import('@/types').PageResponse<import('@/types').PrdResponse>>(
         `/prds?page=${page}&size=${size}`
       ),
-    // Busca todas as páginas e retorna o array completo — use apenas para agregações (ex: dashboard).
-    listAll: async (): Promise<import('@/types').PrdResponse[]> => {
-      const PAGE_SIZE = 200
-      const first = await apiFetch<import('@/types').PageResponse<import('@/types').PrdResponse>>(
-        `/prds?page=0&size=${PAGE_SIZE}`
-      )
-      if (!first) return []
-      if (first.last) return first.content
-      const remaining = Array.from({ length: first.totalPages - 1 }, (_, i) =>
-        apiFetch<import('@/types').PageResponse<import('@/types').PrdResponse>>(
-          `/prds?page=${i + 1}&size=${PAGE_SIZE}`
-        )
-      )
-      const pages = await Promise.all(remaining)
-      return [first.content, ...pages.map((p) => p?.content ?? [])].flat()
-    },
     summary: () =>
       apiFetch<import('@/types').PrdSummaryResponse>('/prds/summary'),
     get: (id: string) => apiFetch<import('@/types').PrdResponse>(`/prds/${id}`),

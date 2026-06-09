@@ -213,4 +213,43 @@ class PrdIntegrationTest {
                                 """))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void getSummary_reflectsCreatedPrds() throws Exception {
+        String token = registerAndLogin("summary@test.com");
+
+        mockMvc.perform(post("/prds")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"PRD A","stack":["Java","Spring"],"objectives":["Perf"]}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/prds")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"PRD B","stack":["Java","Next.js"],"objectives":["Scale"],"status":"REVIEW"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/prds/summary")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(2))
+                .andExpect(jsonPath("$.byStatus.DRAFT").value(1))
+                .andExpect(jsonPath("$.byStatus.REVIEW").value(1))
+                .andExpect(jsonPath("$.byStatus.APPROVED").value(0))
+                .andExpect(jsonPath("$.topStack[0].name").value("Java"))
+                .andExpect(jsonPath("$.topStack[0].count").value(2))
+                .andExpect(jsonPath("$.recent").isArray())
+                .andExpect(jsonPath("$.recent.length()").value(2));
+    }
+
+    @Test
+    void getSummary_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(get("/prds/summary"))
+                .andExpect(status().isUnauthorized());
+    }
 }
