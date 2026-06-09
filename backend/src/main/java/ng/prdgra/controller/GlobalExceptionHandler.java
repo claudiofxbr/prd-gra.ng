@@ -2,6 +2,7 @@ package ng.prdgra.controller;
 
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import ng.prdgra.exception.EmailAlreadyRegisteredException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -39,14 +40,15 @@ public class GlobalExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(EmailAlreadyRegisteredException.class)
+    public ProblemDetail handleEmailAlreadyRegistered(EmailAlreadyRegisteredException ex) {
+        var detail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        detail.setDetail(ex.getMessage());
+        return detail;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
-        // E-mail já registrado é conflito (409), não erro de validação (400)
-        if (ex.getMessage() != null && ex.getMessage().contains("already registered")) {
-            var detail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
-            detail.setDetail(ex.getMessage());
-            return detail;
-        }
         var detail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         detail.setDetail(ex.getMessage());
         return detail;

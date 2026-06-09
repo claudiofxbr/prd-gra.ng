@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import ng.prdgra.dto.LoginRequest;
 import ng.prdgra.dto.LoginResponse;
 import ng.prdgra.dto.RegisterRequest;
+import ng.prdgra.exception.EmailAlreadyRegisteredException;
 import ng.prdgra.model.User;
 import ng.prdgra.repository.UserRepository;
 import ng.prdgra.security.JwtService;
@@ -26,7 +27,7 @@ public class AuthService {
     @Transactional
     public LoginResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
-            throw new IllegalArgumentException("Email already registered");
+            throw new EmailAlreadyRegisteredException();
         }
         var user = User.builder()
                 .name(request.name())

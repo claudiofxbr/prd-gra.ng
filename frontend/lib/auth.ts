@@ -1,7 +1,8 @@
 import type { AuthUser } from '@/types'
 
-const COOKIE_USER = 'prdgra_user'
-const MAX_AGE     = 60 * 60 * 24 * 30 // 30 dias — alinhado com o refresh token do backend
+const COOKIE_USER  = 'prdgra_user'
+const COOKIE_TOKEN = 'prdgra_token'
+const MAX_AGE      = 60 * 60 * 24 * 30 // 30 dias — alinhado com o refresh token do backend
 
 // Apenas o cookie de perfil do usuário (não-sensível) é gerenciado pelo JS.
 // O token JWT é gerenciado exclusivamente pelo backend via Set-Cookie HttpOnly.
@@ -44,6 +45,12 @@ export function clearAuth(): void {
   // O cookie HttpOnly prdgra_token é expirado pelo endpoint POST /auth/logout no backend
 }
 
+// Verifica tanto o cookie de perfil (JS) quanto o cookie JWT (HttpOnly, presente no document.cookie
+// como nome sem valor legível). Se o JWT não estiver presente o middleware já redirecionou para /login,
+// mas a checagem client-side evita flash de conteúdo protegido antes do redirect.
 export function isAuthenticated(): boolean {
-  return !!getAuth()
+  if (!getAuth()) return false
+  // prdgra_token é HttpOnly — o browser não expõe o valor, mas o nome aparece em document.cookie
+  if (typeof document === 'undefined') return false
+  return document.cookie.split('; ').some((row) => row.startsWith(`${COOKIE_TOKEN}=`))
 }

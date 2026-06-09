@@ -2,6 +2,7 @@ package ng.prdgra;
 
 import ng.prdgra.dto.LoginRequest;
 import ng.prdgra.dto.RegisterRequest;
+import ng.prdgra.exception.EmailAlreadyRegisteredException;
 import ng.prdgra.model.User;
 import ng.prdgra.repository.UserRepository;
 import ng.prdgra.security.JwtService;
@@ -70,8 +71,7 @@ class AuthServiceTest {
 
         assertThatThrownBy(() ->
                 authService.register(new RegisterRequest("Test", "test@example.com", "password123")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already registered");
+                .isInstanceOf(EmailAlreadyRegisteredException.class);
 
         verify(userRepository, never()).save(any());
     }

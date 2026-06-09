@@ -4,6 +4,7 @@ import ng.prdgra.config.SecurityConfig;
 import ng.prdgra.dto.PageResponse;
 import ng.prdgra.dto.PrdRequest;
 import ng.prdgra.dto.PrdResponse;
+import ng.prdgra.dto.PrdSummaryResponse;
 import ng.prdgra.repository.UserRepository;
 import ng.prdgra.security.JwtAuthFilter;
 import ng.prdgra.security.JwtService;
@@ -68,6 +69,22 @@ class PrdControllerTest {
 
     private PageResponse<PrdResponse> singlePageResponse(PrdResponse prd) {
         return new PageResponse<>(List.of(prd), 0, 20, 1, 1, true);
+    }
+
+    @Test
+    @WithMockUser(username = "test@example.com")
+    void getSummary_returnsOk() throws Exception {
+        var summary = new PrdSummaryResponse(3,
+                java.util.Map.of("DRAFT", 2L, "REVIEW", 1L, "APPROVED", 0L),
+                List.of(new PrdSummaryResponse.StackEntry("Java", 2L)),
+                List.of());
+        when(prdService.summary("test@example.com")).thenReturn(summary);
+
+        mockMvc.perform(get("/prds/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.byStatus.DRAFT").value(2))
+                .andExpect(jsonPath("$.topStack[0].name").value("Java"));
     }
 
     @Test
