@@ -96,7 +96,8 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ env.IMAGE_FRONTEND }}:${{ github.sha }},${{ env.IMAGE_FRONTEND }}:latest
-          no-cache: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build & push nginx
         uses: docker/build-push-action@v6
@@ -143,6 +144,16 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
+
+            # Validação de secrets obrigatórios antes de qualquer ação destrutiva
+            if [ -z "$DATABASE_URL" ] || [ -z "$JWT_SECRET" ]; then
+              echo "ERRO: DATABASE_URL ou JWT_SECRET ausentes — abortando deploy."
+              exit 1
+            fi
+            if ! echo "$DATABASE_URL" | grep -qiE 'sslmode=require|sslmode=verify'; then
+              echo "AVISO: DATABASE_URL não contém sslmode=require. Conexão com Neon pode ser insegura."
+            fi
+
             mkdir -p /opt/prd-gra
             cd /opt/prd-gra
 
@@ -225,8 +236,9 @@ jobs:
               sleep 3
             done
             if [ "$FRONT_OK" = "false" ]; then
-              echo "AVISO: frontend nao respondeu no sub-path — verificando logs..."
+              echo "ERRO: frontend nao respondeu no sub-path /prd-gra.ng/ — abortando deploy."
               docker compose logs --tail=50 frontend || true
+              exit 1
             fi
 
             # ── Rollback se backend falhou ─────────────────────────────────
@@ -257,9 +269,18 @@ jobs:
             fi
 
             # Atualizar Traefik com o IP atual do nginx na rede easypanel
+            # Usa yq (YAML nativo) em vez de python3+json.load — json.load não parseia YAML com comentários
             NGINX_IP=$(docker inspect prd-gra-nginx-1 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' 2>/dev/null || echo "")
-            if [ -n "$NGINX_IP" ] && [ -f /etc/easypanel/traefik/config/main.yaml ]; then
-              python3 -c "import json; f=open('/etc/easypanel/traefik/config/main.yaml'); cfg=json.load(f); f.close(); cfg['http']['services']['prd-gra-nginx']['loadBalancer']['servers'][0]['url']='http://$NGINX_IP:8081'; f=open('/etc/easypanel/traefik/config/main.yaml','w'); json.dump(cfg,f,indent=2); f.close(); print('Traefik atualizado para $NGINX_IP:8081')" 2>/dev/null || echo "Aviso: nao foi possivel atualizar Traefik"
+            TRAEFIK_CFG="/etc/easypanel/traefik/config/main.yaml"
+            if [ -n "$NGINX_IP" ] && [ -f "$TRAEFIK_CFG" ]; then
+              if command -v yq >/dev/null 2>&1; then
+                yq -i ".http.services.prd-gra-nginx.loadBalancer.servers[0].url = \"http://${NGINX_IP}:8081\"" "$TRAEFIK_CFG"
+                echo "Traefik atualizado para ${NGINX_IP}:8081 (via yq)"
+              else
+                # Fallback: sed em linha exata — funciona enquanto o formato da URL não tiver caracteres especiais de regex
+                sed -i "s|url: \"http://[^\"]*:8081\"|url: \"http://${NGINX_IP}:8081\"|g" "$TRAEFIK_CFG"
+                echo "Traefik atualizado para ${NGINX_IP}:8081 (via sed fallback)"
+              fi
             fi
 
             # Limpeza de imagens antigas (mantém ultimas 72h)
