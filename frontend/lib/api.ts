@@ -113,6 +113,8 @@ export const api = {
       const pages = await Promise.all(remaining)
       return [first.content, ...pages.map((p) => p?.content ?? [])].flat()
     },
+    summary: () =>
+      apiFetch<import('@/types').PrdSummaryResponse>('/prds/summary'),
     get: (id: string) => apiFetch<import('@/types').PrdResponse>(`/prds/${id}`),
     create: (body: import('@/types').PrdRequest) =>
       apiFetch<import('@/types').PrdResponse>('/prds', {

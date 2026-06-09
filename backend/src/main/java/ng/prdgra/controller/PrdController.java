@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import ng.prdgra.dto.PageResponse;
 import ng.prdgra.dto.PrdRequest;
 import ng.prdgra.dto.PrdResponse;
+import ng.prdgra.dto.PrdSummaryResponse;
 import ng.prdgra.service.PrdService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,11 @@ import java.util.UUID;
 public class PrdController {
 
     private final PrdService prdService;
+
+    @GetMapping("/summary")
+    public ResponseEntity<PrdSummaryResponse> summary(@AuthenticationPrincipal UserDetails user) {
+        return ResponseEntity.ok(prdService.summary(user.getUsername()));
+    }
 
     @GetMapping
     public ResponseEntity<PageResponse<PrdResponse>> list(

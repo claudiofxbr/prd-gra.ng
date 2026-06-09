@@ -41,3 +41,22 @@ export interface AuthUser {
   email: string
   role: string
 }
+
+export interface PrdSummaryStackEntry {
+  name: string
+  count: number
+}
+
+export interface PrdSummaryRecentEntry {
+  id: string
+  title: string
+  status: PrdStatus
+  updatedAt: string
+}
+
+export interface PrdSummaryResponse {
+  total: number
+  byStatus: Record<PrdStatus, number>
+  topStack: PrdSummaryStackEntry[]
+  recent: PrdSummaryRecentEntry[]
+}

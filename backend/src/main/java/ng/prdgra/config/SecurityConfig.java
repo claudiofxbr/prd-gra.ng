@@ -73,7 +73,7 @@ public class SecurityConfig {
                         .password(user.getPasswordHash())
                         .roles(user.getRole())
                         .build())
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }
 
     @Bean

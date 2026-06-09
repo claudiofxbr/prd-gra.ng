@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import ng.prdgra.dto.PageResponse;
 import ng.prdgra.dto.PrdRequest;
 import ng.prdgra.dto.PrdResponse;
+import ng.prdgra.dto.PrdSummaryResponse;
+import ng.prdgra.model.converter.StringListConverter;
 import ng.prdgra.model.Prd;
 import ng.prdgra.model.User;
 import ng.prdgra.repository.PrdRepository;
@@ -18,8 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -42,7 +46,6 @@ public class PrdService {
 
     @Transactional
     public PrdResponse create(PrdRequest request, String userEmail) {
-        // getReferenceById evita SELECT extra — apenas o FK é necessário para auditoria
         User userRef = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException(userEmail));
         var prd = Prd.builder()
@@ -54,8 +57,7 @@ public class PrdService {
                 .createdBy(userRef)
                 .modifiedBy(userRef)
                 .build();
-        @SuppressWarnings("null")
-        Prd saved = Objects.requireNonNull(prdRepository.save(prd), "save retornou null");
+        @SuppressWarnings("null") Prd saved = prdRepository.save(prd);
         evictUserCache(userEmail);
         return PrdResponse.from(saved);
     }
@@ -76,8 +78,7 @@ public class PrdService {
                 throw new IllegalArgumentException("Status inválido: " + request.status());
             }
         }
-        @SuppressWarnings("null")
-        Prd saved = Objects.requireNonNull(prdRepository.save(prd), "save retornou null");
+        @SuppressWarnings("null") Prd saved = prdRepository.save(prd);
         evictUserCache(userEmail);
         return PrdResponse.from(saved);
     }
@@ -96,6 +97,43 @@ public class PrdService {
         return prdRepository.findByIdAndUserEmail(id, userEmail)
                 .map(PrdResponse::from)
                 .orElseThrow(() -> new NoSuchElementException("PRD não encontrado"));
+    }
+
+    public PrdSummaryResponse summary(String userEmail) {
+        // Contagem por status
+        Map<String, Long> byStatus = new HashMap<>();
+        for (Object[] row : prdRepository.countByStatusForUser(userEmail)) {
+            byStatus.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+        }
+        int total = byStatus.values().stream().mapToInt(Long::intValue).sum();
+
+        // Top stacks — cada linha é o JSON serializado do campo stack de um PRD
+        var converter = new StringListConverter();
+        Map<String, Long> stackMap = new HashMap<>();
+        for (String raw : prdRepository.findAllStacksRawByUser(userEmail)) {
+            for (String item : converter.convertToEntityAttribute(raw)) {
+                if (item != null && !item.isBlank()) {
+                    stackMap.merge(item.trim(), 1L, (a, b) -> a + b);
+                }
+            }
+        }
+        List<PrdSummaryResponse.StackEntry> topStack = stackMap.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(6)
+                .map(e -> new PrdSummaryResponse.StackEntry(e.getKey(), e.getValue()))
+                .toList();
+
+        // Atividade recente
+        List<PrdSummaryResponse.RecentEntry> recent = prdRepository.findRecentByUser(userEmail, 5)
+                .stream()
+                .map(row -> new PrdSummaryResponse.RecentEntry(
+                        UUID.fromString(String.valueOf(row[0])),
+                        String.valueOf(row[1]),
+                        String.valueOf(row[2]),
+                        ((java.sql.Timestamp) row[3]).toInstant()))
+                .toList();
+
+        return new PrdSummaryResponse(total, byStatus, topStack, recent);
     }
 
     // Remove apenas as entradas de cache do usuário afetado, preservando cache dos demais.
