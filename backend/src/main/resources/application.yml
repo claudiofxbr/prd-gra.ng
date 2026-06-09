@@ -23,6 +23,10 @@ spring:
     locations: classpath:db/migration
   cache:
     type: caffeine
+    caffeine:
+      # maximumSize: evita crescimento ilimitado de entradas em memória
+      # expireAfterWrite: invalida entradas 5 min após escrita — dados nunca ficam obsoletos por mais de 5 min
+      spec: maximumSize=500,expireAfterWrite=300s
 
 server:
   port: 8080

@@ -27,8 +27,8 @@ export default function PrdForm({ initial, onSubmit, loading }: Props) {
     defaultValues: {
       title:       initial?.title ?? '',
       description: initial?.description ?? '',
-      stack:       (initial?.stack ?? ['']).map((v) => ({ value: v })),
-      objectives:  (initial?.objectives ?? ['']).map((v) => ({ value: v })),
+      stack:       (initial?.stack?.length ? initial.stack : ['']).map((v) => ({ value: v })),
+      objectives:  (initial?.objectives?.length ? initial.objectives : ['']).map((v) => ({ value: v })),
       status:      (initial?.status as PrdStatus | undefined) ?? 'DRAFT',
     },
   })
