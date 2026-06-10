@@ -226,13 +226,26 @@ class PrdIntegrationTest {
                                 """))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/prds")
+        // create() sempre usa status DRAFT — mudar para REVIEW requer um PUT separado
+        var createB = mockMvc.perform(post("/prds")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"PRD B","stack":["Java","Next.js"],"objectives":["Scale"]}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String idB = com.fasterxml.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(createB.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(put("/prds/" + idB)
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"PRD B","stack":["Java","Next.js"],"objectives":["Scale"],"status":"REVIEW"}
                                 """))
-                .andExpect(status().isCreated());
+                .andExpect(status().isOk());
 
         mockMvc.perform(get("/prds/summary")
                         .header("Authorization", "Bearer " + token))
