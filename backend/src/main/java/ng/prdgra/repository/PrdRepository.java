@@ -22,8 +22,9 @@ public interface PrdRepository extends JpaRepository<Prd, UUID> {
     @Query("SELECT p.status, COUNT(p) FROM Prd p WHERE p.user.email = :email AND p.deletedAt IS NULL GROUP BY p.status")
     List<Object[]> countByStatusForUser(@Param("email") String email);
 
-    // Retorna o valor raw do campo stack (JSON serializado pelo StringListConverter)
-    @Query(value = "SELECT p.stack FROM prds p JOIN users u ON p.user_id = u.id WHERE u.email = :email AND p.deleted_at IS NULL", nativeQuery = true)
+    // Retorna o valor raw do campo stack (JSON serializado pelo StringListConverter).
+    // LIMIT 500: impede pico de memória em contas com muitos PRDs — suficiente para topStack.
+    @Query(value = "SELECT p.stack FROM prds p JOIN users u ON p.user_id = u.id WHERE u.email = :email AND p.deleted_at IS NULL LIMIT 500", nativeQuery = true)
     List<String> findAllStacksRawByUser(@Param("email") String email);
 
     @Query(value = "SELECT p.id::text, p.title, p.status, p.updated_at FROM prds p JOIN users u ON p.user_id = u.id WHERE u.email = :email AND p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT :limit", nativeQuery = true)

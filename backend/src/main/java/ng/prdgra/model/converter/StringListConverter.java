@@ -1,6 +1,5 @@
 package ng.prdgra.model.converter;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.AttributeConverter;
@@ -8,6 +7,7 @@ import jakarta.persistence.Converter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,7 +21,7 @@ public class StringListConverter implements AttributeConverter<List<String>, Str
     public String convertToDatabaseColumn(List<String> attribute) {
         try {
             return attribute == null ? "[]" : MAPPER.writeValueAsString(attribute);
-        } catch (JsonProcessingException e) {
+        } catch (IOException e) {
             log.warn("StringListConverter: falha ao serializar lista para JSON: {}", e.getMessage());
             return "[]";
         }
@@ -32,7 +32,7 @@ public class StringListConverter implements AttributeConverter<List<String>, Str
         if (dbData == null || dbData.isBlank()) return new ArrayList<>();
         try {
             return MAPPER.readValue(dbData, new TypeReference<>() {});
-        } catch (JsonProcessingException e) {
+        } catch (IOException e) {
             log.warn("StringListConverter: falha ao parsear '{}': {}", dbData, e.getMessage());
             return new ArrayList<>();
         }

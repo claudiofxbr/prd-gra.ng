@@ -114,14 +114,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Scheduled(fixedDelay = 300_000L)
     public void evictExpiredWindows() {
         long now = System.currentTimeMillis();
-        int removed = 0;
-        for (var it = windows.entrySet().iterator(); it.hasNext(); ) {
-            if (now - it.next().getValue().windowStart > WINDOW_MS) {
-                it.remove();
-                removed++;
-            }
-        }
-        if (removed > 0) log.debug("Rate limit: {} entradas expiradas removidas", removed);
+        int[] removed = {0};
+        windows.values().removeIf(entry -> {
+            if (now - entry.windowStart() > WINDOW_MS) { removed[0]++; return true; }
+            return false;
+        });
+        if (removed[0] > 0) log.debug("Rate limit: {} entradas expiradas removidas", removed[0]);
     }
 
     private void sendTooManyRequests(HttpServletResponse response) throws IOException {
