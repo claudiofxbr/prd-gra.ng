@@ -100,8 +100,11 @@ public class PrdService {
     }
 
     public PrdSummaryResponse summary(String userEmail) {
-        // Contagem por status
+        // Contagem por status — inicializa todos os status com 0 para garantir chaves no JSON
         Map<String, Long> byStatus = new HashMap<>();
+        for (Prd.PrdStatus s : Prd.PrdStatus.values()) {
+            byStatus.put(s.name(), 0L);
+        }
         for (Object[] row : prdRepository.countByStatusForUser(userEmail)) {
             byStatus.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
         }
@@ -123,17 +126,24 @@ public class PrdService {
                 .map(e -> new PrdSummaryResponse.StackEntry(e.getKey(), e.getValue()))
                 .toList();
 
-        // Atividade recente
+        // Atividade recente — row[3] pode ser Timestamp ou LocalDateTime dependendo do driver
         List<PrdSummaryResponse.RecentEntry> recent = prdRepository.findRecentByUser(userEmail, 5)
                 .stream()
                 .map(row -> new PrdSummaryResponse.RecentEntry(
                         UUID.fromString(String.valueOf(row[0])),
                         String.valueOf(row[1]),
                         String.valueOf(row[2]),
-                        ((java.sql.Timestamp) row[3]).toInstant()))
+                        toInstant(row[3])))
                 .toList();
 
         return new PrdSummaryResponse(total, byStatus, topStack, recent);
+    }
+
+    private static Instant toInstant(Object value) {
+        if (value instanceof java.sql.Timestamp ts) return ts.toInstant();
+        if (value instanceof java.time.LocalDateTime ldt) return ldt.toInstant(java.time.ZoneOffset.UTC);
+        if (value instanceof Instant i) return i;
+        throw new IllegalStateException("Tipo inesperado para updated_at: " + value.getClass());
     }
 
     // Remove apenas as entradas de cache do usuário afetado, preservando cache dos demais.
