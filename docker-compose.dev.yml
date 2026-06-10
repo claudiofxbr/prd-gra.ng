@@ -10,6 +10,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # Perfil dev: desabilita rate limit (app.rate-limit.enabled=false em application-dev.yml)
+      SPRING_PROFILES_ACTIVE: dev
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/actuator/health | grep -q UP || exit 1"]
       interval: 15s

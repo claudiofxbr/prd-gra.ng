@@ -7,6 +7,8 @@ on:
     branches: [main]
 
 env:
+  # Opt-in antecipado ao Node.js 24 para GitHub Actions (obrigatório a partir de 16/06/2026)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
   # github.repository_owner ja e lowercase; github.event.repository.name preserva case do repo
   # mas GHCR aceita case-insensitive no nome do repo — apenas o owner precisa ser lowercase

@@ -299,6 +299,9 @@ function Start-WithDocker {
     Write-Info "Construindo imagens e iniciando servicos..."
     Write-Host "  (Primeira execucao pode levar 3-5 minutos)" -ForegroundColor DarkGray
 
+    # --build reconstroi apenas se o Dockerfile ou o contexto mudou (cache do BuildKit).
+    # Mantido para garantir que alteracoes locais em src/ sejam refletidas sem precisar
+    # de docker compose build manual antes do up.
     docker compose -f docker-compose.dev.yml up --build -d 2>&1 | ForEach-Object {
         if ($_ -notmatch "^$") { Write-Host "    $_" -ForegroundColor DarkGray }
     }
@@ -715,24 +718,24 @@ function Invoke-SmokeTests {
 # =========================================================
 function Show-Summary {
     Write-Host ""
-    Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
-    Write-Host "  |        PRD-GRA.NG  ATIVO E PRONTO         |" -ForegroundColor Blue
-    Write-Host "  +--------------------------------------------+" -ForegroundColor Blue
+    Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
+    Write-Host "  |         PRD-GRA.NG  -  ATIVO E PRONTO              |" -ForegroundColor Blue
+    Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
     Write-Host "  |  Aplicativo  :  http://localhost:3000/prd-gra.ng   |" -ForegroundColor Cyan
     Write-Host "  |  API         :  http://localhost:8080/api          |" -ForegroundColor Cyan
     Write-Host "  |  Health      :  /api/actuator/health               |" -ForegroundColor Cyan
     Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
-    Write-Host "  |  Rotas (basePath: /prd-gra.ng):                     |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd-gra.ng           -> Landing page            |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd-gra.ng/login     -> Entrar                  |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd-gra.ng/register  -> Criar conta             |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd-gra.ng/dashboard -> Painel principal        |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd-gra.ng/prd       -> Seus PRDs (login)       |" -ForegroundColor DarkGray
-    Write-Host "  |    /prd-gra.ng/prd/new   -> Criar novo PRD          |" -ForegroundColor DarkGray
+    Write-Host "  |  Rotas (basePath: /prd-gra.ng):                    |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng           -> Landing page           |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/login     -> Entrar                 |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/register  -> Criar conta            |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/dashboard -> Painel principal       |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/prd       -> Seus PRDs              |" -ForegroundColor DarkGray
+    Write-Host "  |    /prd-gra.ng/prd/new   -> Criar novo PRD         |" -ForegroundColor DarkGray
     Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
-    Write-Host "  |  Comandos uteis:                                     |" -ForegroundColor Yellow
-    Write-Host "  |    .\start-prdgra.ps1 -Modo status                   |" -ForegroundColor Yellow
-    Write-Host "  |    .\start-prdgra.ps1 -Modo parar                    |" -ForegroundColor Yellow
+    Write-Host "  |  Comandos uteis:                                    |" -ForegroundColor Yellow
+    Write-Host "  |    .\start-prdgra.ps1 -Modo status                 |" -ForegroundColor Yellow
+    Write-Host "  |    .\start-prdgra.ps1 -Modo parar                  |" -ForegroundColor Yellow
     Write-Host "  +-----------------------------------------------------+" -ForegroundColor Blue
     Write-Host ""
 }
@@ -791,8 +794,9 @@ switch ($Modo) {
         Assert-EnvVars
 
         # Se ja esta rodando, apenas mostrar status
+        # Frontend responde em /prd-gra.ng (basePath) — verificar o sub-path correto
         $backendOk  = Test-HttpPort "http://localhost:8080/api/actuator/health"
-        $frontendOk = Test-HttpPort "http://localhost:3000"
+        $frontendOk = Test-HttpPort "http://localhost:3000/prd-gra.ng"
 
         if ($backendOk -and $frontendOk) {
             Write-Ok "PRD-GRA.NG ja esta rodando!"
