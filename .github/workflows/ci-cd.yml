@@ -212,7 +212,7 @@ jobs:
             for i in $(seq 1 20); do
               STATUS=$(docker compose exec -T backend \
                 wget -qO- http://localhost:8080/api/actuator/health 2>/dev/null \
-                | grep -o '"status":"[^"]*"' | head -1 || echo "")
+                | grep -o '"status":"[^"]*"' | head -1 || true)
               if echo "$STATUS" | grep -q '"UP"'; then
                 echo "Backend smoke test aprovado na tentativa $i."
                 SUCCESS=true
@@ -220,7 +220,7 @@ jobs:
               fi
               echo "Tentativa $i: $STATUS — aguardando 3s..."
               sleep 3
-            done
+            done || true
 
             # ── Smoke test frontend ────────────────────────────────────────
             # Executa wget DENTRO do container frontend (porta interna 3000, sem depender do nginx)
@@ -229,7 +229,7 @@ jobs:
             for i in $(seq 1 10); do
               HTTP_CODE=$(docker compose exec -T frontend \
                 wget -qO /dev/null --server-response http://127.0.0.1:3000/prd-gra.ng/ 2>&1 \
-                | grep "HTTP/" | tail -1 | awk '{print $2}' || echo "")
+                | grep "HTTP/" | tail -1 | awk '{print $2}' || true)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "Frontend OK (HTTP 200) na tentativa $i."
                 FRONT_OK=true
@@ -237,12 +237,14 @@ jobs:
               fi
               echo "Tentativa $i: HTTP $HTTP_CODE — aguardando 3s..."
               sleep 3
-            done
+            done || true
             if [ "$FRONT_OK" = "false" ]; then
               echo "ERRO: frontend nao respondeu no sub-path /prd-gra.ng/ — abortando deploy."
               docker compose logs --tail=50 frontend || true
               exit 1
             fi
+
+            echo "Ambos smoke tests internos aprovados. Verificando rollback..."
 
             # ── Rollback se backend falhou ─────────────────────────────────
             if [ "$SUCCESS" = "false" ]; then
@@ -271,6 +273,7 @@ jobs:
               exit 1
             fi
 
+            echo "Atualizando Traefik..."
             # Atualizar Traefik com o IP atual do nginx na rede easypanel
             # Usa yq (YAML nativo) em vez de python3+json.load — json.load não parseia YAML com comentários
             NGINX_IP=$(docker inspect prd-gra-nginx-1 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' 2>/dev/null || true)
