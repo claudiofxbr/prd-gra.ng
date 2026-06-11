@@ -16,14 +16,16 @@ const BASE_SECURITY_HEADERS: Record<string, string> = {
   'X-DNS-Prefetch-Control': 'on',
 }
 
-// CSP aplicado apenas em produção
+// 'unsafe-inline' obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e chunks
+// de hydration inline — sem ele o React não inicializa e a página fica em branco.
+// connect-src: API relativa (/api) já é coberta por 'self' — não adicionar origem.
 const CSP_PROD =
   "default-src 'self'; " +
-  "script-src 'self' 'wasm-unsafe-eval' 'inline-speculation-rules'; " +
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'; " +
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
   "font-src 'self' data: https://fonts.gstatic.com; " +
   "img-src 'self' data:; " +
-  `connect-src 'self' ${process.env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') ?? 'http://localhost:8080'}; ` +
+  "connect-src 'self'; " +
   "frame-ancestors 'none'"
 
 export function middleware(request: NextRequest) {
