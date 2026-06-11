@@ -194,9 +194,9 @@ jobs:
             PREVIOUS_SHA=""
             BACKEND_CID=$(docker compose ps -q backend 2>/dev/null || true)
             if [ -n "$BACKEND_CID" ]; then
-              RUNNING_IMAGE=$(docker inspect --format='{{index .Config.Image}}' "$BACKEND_CID" 2>/dev/null || echo "")
+              RUNNING_IMAGE=$(docker inspect --format='{{index .Config.Image}}' "$BACKEND_CID" 2>/dev/null || true)
               # Extrai o SHA do formato ghcr.io/owner/repo/backend:<sha> — usa apenas hex lowercase
-              PREVIOUS_SHA=$(echo "$RUNNING_IMAGE" | grep -oE '[0-9a-f]{40}$' || echo "")
+              PREVIOUS_SHA=$(echo "$RUNNING_IMAGE" | grep -oE '[0-9a-f]{40}$' || true)
             fi
 
             # Pull das novas imagens
@@ -273,21 +273,21 @@ jobs:
 
             # Atualizar Traefik com o IP atual do nginx na rede easypanel
             # Usa yq (YAML nativo) em vez de python3+json.load — json.load não parseia YAML com comentários
-            NGINX_IP=$(docker inspect prd-gra-nginx-1 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' 2>/dev/null || echo "")
+            NGINX_IP=$(docker inspect prd-gra-nginx-1 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' 2>/dev/null || true)
             TRAEFIK_CFG="/etc/easypanel/traefik/config/main.yaml"
             if [ -n "$NGINX_IP" ] && [ -f "$TRAEFIK_CFG" ]; then
               if command -v yq >/dev/null 2>&1; then
-                yq -i ".http.services.prd-gra-nginx.loadBalancer.servers[0].url = \"http://${NGINX_IP}:8081\"" "$TRAEFIK_CFG"
+                yq -i ".http.services.prd-gra-nginx.loadBalancer.servers[0].url = \"http://${NGINX_IP}:8081\"" "$TRAEFIK_CFG" || true
                 echo "Traefik atualizado para ${NGINX_IP}:8081 (via yq)"
               else
                 # Fallback: sed em linha exata — funciona enquanto o formato da URL não tiver caracteres especiais de regex
-                sed -i "s|url: \"http://[^\"]*:8081\"|url: \"http://${NGINX_IP}:8081\"|g" "$TRAEFIK_CFG"
+                sed -i "s|url: \"http://[^\"]*:8081\"|url: \"http://${NGINX_IP}:8081\"|g" "$TRAEFIK_CFG" || true
                 echo "Traefik atualizado para ${NGINX_IP}:8081 (via sed fallback)"
               fi
             fi
 
-            # Limpeza de imagens antigas (mantém ultimas 72h)
-            docker image prune -f --filter "until=72h"
+            # Limpeza de imagens antigas (mantém ultimas 72h) — || true pois prune retorna 1 quando não há imagens
+            docker image prune -f --filter "until=72h" || true
 
             # ── Smoke test externo via domínio público ─────────────────────
             # Valida que o Traefik está roteando corretamente para o app
