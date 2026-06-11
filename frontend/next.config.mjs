@@ -21,11 +21,11 @@ const connectSrc = `connect-src 'self' ${apiOrigin}`
 
 // CSP só é aplicado em produção — em dev bloqueia extensões do browser e chunks HMR
 // sem oferecer nenhuma proteção real (ambiente local, sem dados reais em risco).
-// Next.js 14 App Router com standalone output serve chunks externos (não inline), por
-// isso 'unsafe-inline' em script-src pode ser omitido em prod com segurança.
+// Next.js 15 App Router com SSR injeta __NEXT_DATA__ e scripts de hydration inline —
+// 'unsafe-inline' é obrigatório em script-src sem middleware de nonce.
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval' 'inline-speculation-rules'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data:",
