@@ -192,12 +192,14 @@ jobs:
             # Registrar imagem atual do backend para rollback (trata primeiro deploy sem container)
             # Captura o SHA da imagem em execução ANTES do pull — o pull sobrescreve :latest
             PREVIOUS_SHA=""
-            BACKEND_CID=$(docker compose ps -q backend 2>/dev/null || true)
+            set +e
+            BACKEND_CID=$(docker compose ps -q backend 2>/dev/null)
             if [ -n "$BACKEND_CID" ]; then
-              RUNNING_IMAGE=$(docker inspect --format='{{index .Config.Image}}' "$BACKEND_CID" 2>/dev/null || true)
+              RUNNING_IMAGE=$(docker inspect --format='{{index .Config.Image}}' "$BACKEND_CID" 2>/dev/null)
               # Extrai o SHA do formato ghcr.io/owner/repo/backend:<sha> — usa apenas hex lowercase
-              PREVIOUS_SHA=$(echo "$RUNNING_IMAGE" | grep -oE '[0-9a-f]{40}$' || true)
+              PREVIOUS_SHA=$(echo "$RUNNING_IMAGE" | grep -oE '[0-9a-f]{40}$')
             fi
+            set -e
 
             # Pull das novas imagens
             docker compose --env-file "$ENV_FILE" pull
@@ -275,8 +277,11 @@ jobs:
 
             echo "Atualizando Traefik..."
             # Atualizar Traefik com o IP atual do nginx na rede easypanel
-            # Usa yq (YAML nativo) em vez de python3+json.load — json.load não parseia YAML com comentários
-            NGINX_IP=$(docker inspect prd-gra-nginx-1 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' 2>/dev/null || true)
+            # set +e localmente: docker inspect pode falhar se o container não estiver na rede easypanel
+            # e a atribuição via $() propaga o exit code mesmo com || true sob set -e em algumas versões do bash
+            set +e
+            NGINX_IP=$(docker inspect prd-gra-nginx-1 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' 2>/dev/null)
+            set -e
             TRAEFIK_CFG="/etc/easypanel/traefik/config/main.yaml"
             if [ -n "$NGINX_IP" ] && [ -f "$TRAEFIK_CFG" ]; then
               if command -v yq >/dev/null 2>&1; then
@@ -287,10 +292,14 @@ jobs:
                 sed -i "s|url: \"http://[^\"]*:8081\"|url: \"http://${NGINX_IP}:8081\"|g" "$TRAEFIK_CFG" || true
                 echo "Traefik atualizado para ${NGINX_IP}:8081 (via sed fallback)"
               fi
+            else
+              echo "Traefik: nginx não encontrado na rede easypanel ou cfg ausente — pulando atualização."
             fi
 
-            # Limpeza de imagens antigas (mantém ultimas 72h) — || true pois prune retorna 1 quando não há imagens
-            docker image prune -f --filter "until=72h" || true
+            # Limpeza de imagens antigas (mantém ultimas 72h)
+            set +e
+            docker image prune -f --filter "until=72h"
+            set -e
 
             # ── Smoke test externo via domínio público ─────────────────────
             # Valida que o Traefik está roteando corretamente para o app
