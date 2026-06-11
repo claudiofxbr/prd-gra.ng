@@ -2,7 +2,7 @@
 const isDev = process.env.NODE_ENV !== 'production'
 
 // Extrair apenas a origem (scheme://host:port) da variavel de ambiente.
-// NEXT_PUBLIC_API_URL pode ser "http://localhost:8080/api" ou "https://api.exemplo.com/api"
+// NEXT_PUBLIC_API_URL pode ser "http://localhost:8080/api" ou "/api" (relativa).
 // O CSP connect-src precisa da ORIGEM, nao do path — o browser valida por origem, nao por prefixo de path.
 function extractOrigin(urlWithPath) {
   try {
@@ -13,14 +13,16 @@ function extractOrigin(urlWithPath) {
   }
 }
 
-const rawApiUrl  = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api'
-const apiOrigin  = extractOrigin(rawApiUrl)  // "http://localhost:8080"
+const rawApiUrl  = process.env.NEXT_PUBLIC_API_URL ?? ''
+// Se a URL for relativa ("/api") ou vazia, 'self' no connect-src já cobre — não adicionar origem extra.
+const apiOrigin  = rawApiUrl.startsWith('http') ? extractOrigin(rawApiUrl) : ''
 
-// connect-src: apenas para uso no CSP de prod (dev não recebe CSP)
-const connectSrc = `connect-src 'self' ${apiOrigin}`
+// connect-src: 'self' cobre APIs relativas; adiciona origem explícita só quando é cross-origin.
+const connectSrc = apiOrigin
+  ? `connect-src 'self' ${apiOrigin}`
+  : "connect-src 'self'"
 
-// CSP só é aplicado em produção — em dev bloqueia extensões do browser e chunks HMR
-// sem oferecer nenhuma proteção real (ambiente local, sem dados reais em risco).
+// CSP aplicado em todos os ambientes (dev e prod).
 // Next.js 15 App Router com SSR injeta __NEXT_DATA__ e scripts de hydration inline —
 // 'unsafe-inline' é obrigatório em script-src sem middleware de nonce.
 const cspDirectives = [
@@ -33,21 +35,14 @@ const cspDirectives = [
   "frame-ancestors 'none'",
 ]
 
-// Headers aplicados em todos os ambientes exceto o CSP (dev não recebe CSP)
-const baseHeaders = [
+const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  { key: 'Content-Security-Policy', value: cspDirectives.join('; ') },
 ]
-
-const securityHeaders = isDev
-  ? baseHeaders
-  : [
-      ...baseHeaders,
-      { key: 'Content-Security-Policy', value: cspDirectives.join('; ') },
-    ]
 
 const BASE_PATH = '/prd-gra.ng'
 
