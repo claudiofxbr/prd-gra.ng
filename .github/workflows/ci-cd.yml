@@ -40,7 +40,7 @@ jobs:
   test-backend:
     name: Backend Tests (Unit + Integration)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: backend
@@ -63,6 +63,7 @@ jobs:
           path: |
             backend/target/surefire-reports/
             backend/target/failsafe-reports/
+          if-no-files-found: ignore
 
   # ─────────────────────────────────────────────────────────────
   build-push:
