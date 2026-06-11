@@ -10,7 +10,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# CACHE_BUST é passado pelo CI com o SHA do commit — invalida o cache BuildKit
+# no stage builder a cada deploy, garantindo que next.config.mjs seja recompilado.
+ARG CACHE_BUST=dev
+RUN echo "cache-bust=$CACHE_BUST" && npm run build
 
 FROM node:22-alpine AS runner
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
