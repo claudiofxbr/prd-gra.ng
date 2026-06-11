@@ -156,9 +156,9 @@ export default function DashboardPage() {
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard icon="📄" label="Total de PRDs"   value={total}                accent={total > 0} />
-                <StatCard icon="✏️" label="Rascunhos"       value={byStatus.DRAFT ?? 0}  sub={total > 0 ? `${Math.round((byStatus.DRAFT ?? 0) / total * 100)}%` : '0%'} />
-                <StatCard icon="🔍" label="Em Revisão"      value={byStatus.REVIEW ?? 0} sub={total > 0 ? `${Math.round((byStatus.REVIEW ?? 0) / total * 100)}%` : '0%'} />
-                <StatCard icon="✅" label="Aprovados"        value={byStatus.APPROVED ?? 0} sub={total > 0 ? `${Math.round((byStatus.APPROVED ?? 0) / total * 100)}%` : '0%'} />
+                <StatCard icon="✏️" label="Rascunhos"       value={byStatus.DRAFT ?? 0}  sub={total > 0 ? `${Math.round(((byStatus.DRAFT ?? 0) / total) * 100)}%` : '0%'} />
+                <StatCard icon="🔍" label="Em Revisão"      value={byStatus.REVIEW ?? 0} sub={total > 0 ? `${Math.round(((byStatus.REVIEW ?? 0) / total) * 100)}%` : '0%'} />
+                <StatCard icon="✅" label="Aprovados"        value={byStatus.APPROVED ?? 0} sub={total > 0 ? `${Math.round(((byStatus.APPROVED ?? 0) / total) * 100)}%` : '0%'} />
               </div>
             </section>
 

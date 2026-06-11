@@ -33,7 +33,7 @@ public class PrdController {
 
     @GetMapping
     public ResponseEntity<PageResponse<PrdResponse>> list(
-            @RequestParam(defaultValue = "0")  @Min(0) int page,
+            @RequestParam(defaultValue = "0")  @Min(0) @Max(10_000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @AuthenticationPrincipal UserDetails user) {
         return ResponseEntity.ok(prdService.listByUser(user.getUsername(), page, size));

@@ -190,6 +190,13 @@ class PrdControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "test@example.com")
+    void listPrds_pageExceedsMax_returns400() throws Exception {
+        mockMvc.perform(get("/prds?page=10001"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void listPrds_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/prds"))
                 .andExpect(status().isUnauthorized());
