@@ -274,25 +274,14 @@ jobs:
             fi
 
             echo "Atualizando Traefik..."
-            # Bloco Traefik em subshell isolada — falhas internas não propagam para o script principal.
-            # docker inspect retorna exit 1 se o container não estiver na rede easypanel;
-            # yq/sed podem falhar se o cfg não existir ou não tiver a chave esperada.
             (
+              TRAEFIK_CFG="/etc/easypanel/traefik/config/main.yaml"
+              [ -f "$TRAEFIK_CFG" ] || { echo "Traefik cfg ausente — pulando."; exit 0; }
               NGINX_IP=$(docker inspect prd-gra-nginx-1 \
                 --format '{{range $net,$conf := .NetworkSettings.Networks}}{{if eq $net "easypanel"}}{{$conf.IPAddress}}{{end}}{{end}}' \
                 2>/dev/null) || true
-              TRAEFIK_CFG="/etc/easypanel/traefik/config/main.yaml"
-              if [ -n "$NGINX_IP" ] && [ -f "$TRAEFIK_CFG" ]; then
-                if command -v yq >/dev/null 2>&1; then
-                  yq -i ".http.services.prd-gra-nginx.loadBalancer.servers[0].url = \"http://${NGINX_IP}:8081\"" "$TRAEFIK_CFG"
-                  echo "Traefik atualizado para ${NGINX_IP}:8081 (via yq)"
-                else
-                  sed -i "s|url: \"http://[^\"]*:8081\"|url: \"http://${NGINX_IP}:8081\"|g" "$TRAEFIK_CFG"
-                  echo "Traefik atualizado para ${NGINX_IP}:8081 (via sed fallback)"
-                fi
-              else
-                echo "Traefik: nginx nao encontrado na rede easypanel ou cfg ausente — pulando."
-              fi
+              [ -n "$NGINX_IP" ] || { echo "nginx nao encontrado na rede easypanel — pulando."; exit 0; }
+              python3 -c "import base64,sys; exec(base64.b64decode('aW1wb3J0IGpzb24sIHN5cwpjZmdfcGF0aCwgbmdpbnhfaXAgPSBzeXMuYXJndlsxXSwgc3lzLmFyZ3ZbMl0KYnQgPSBjaHIoOTYpCndpdGggb3BlbihjZmdfcGF0aCkgYXMgZjoKICAgIGNmZyA9IGpzb24ubG9hZChmKQpyID0gY2ZnWyJodHRwIl1bInJvdXRlcnMiXQpzID0gY2ZnWyJodHRwIl1bInNlcnZpY2VzIl0KclsiaHR0cC1wcmQtZ3JhLW5naW54Il0gPSB7Im1pZGRsZXdhcmVzIjogWyJyZWRpcmVjdC10by1odHRwcyIsICJiYWQtZ2F0ZXdheS1lcnJvci1wYWdlIl0sICJwcmlvcml0eSI6IDEwLCAicnVsZSI6ICJIb3N0KCIgKyBidCArICJ4YXZpZXJici12cHMudGVjaCIgKyBidCArICIpICYmIFBhdGhQcmVmaXgoIiArIGJ0ICsgIi8iICsgYnQgKyAiKSIsICJzZXJ2aWNlIjogInByZC1ncmEtbmdpbngiLCAiZW50cnlQb2ludHMiOiBbImh0dHAiXX0KclsiaHR0cHMtcHJkLWdyYS1uZ2lueCJdID0geyJtaWRkbGV3YXJlcyI6IFsiYmFkLWdhdGV3YXktZXJyb3ItcGFnZSJdLCAicHJpb3JpdHkiOiAxMCwgInJ1bGUiOiAiSG9zdCgiICsgYnQgKyAieGF2aWVyYnItdnBzLnRlY2giICsgYnQgKyAiKSAmJiBQYXRoUHJlZml4KCIgKyBidCArICIvIiArIGJ0ICsgIikiLCAic2VydmljZSI6ICJwcmQtZ3JhLW5naW54IiwgInRscyI6IHsiY2VydFJlc29sdmVyIjogImxldHNlbmNyeXB0IiwgImRvbWFpbnMiOiBbeyJtYWluIjogInhhdmllcmJyLXZwcy50ZWNoIn1dfSwgImVudHJ5UG9pbnRzIjogWyJodHRwcyJdfQpmb3Igb2xkIGluIFsicHJkLWdyYV9wcmQtZ3JhLTAiXToKICAgIHIucG9wKCJodHRwLSIgKyBvbGQsIE5vbmUpOyByLnBvcCgiaHR0cHMtIiArIG9sZCwgTm9uZSk7IHMucG9wKG9sZCwgTm9uZSkKc1sicHJkLWdyYS1uZ2lueCJdID0geyJsb2FkQmFsYW5jZXIiOiB7InBhc3NIb3N0SGVhZGVyIjogVHJ1ZSwgInNlcnZlcnMiOiBbeyJ1cmwiOiAiaHR0cDovLyIgKyBuZ2lueF9pcCArICI6ODA4MS8ifV19fQp3aXRoIG9wZW4oY2ZnX3BhdGgsICJ3IikgYXMgZjoKICAgIGpzb24uZHVtcChjZmcsIGYsIGluZGVudD0yKQpwcmludCgiVHJhZWZpayBhdHVhbGl6YWRvOiBwcmQtZ3JhLW5naW54IC0+ICIgKyBuZ2lueF9pcCArICI6ODA4MSIpCg==').decode())" "$TRAEFIK_CFG" "$NGINX_IP"
             ) || echo "Aviso: atualizacao do Traefik falhou (nao critico)."
 
             # Limpeza de imagens antigas (mantém ultimas 72h)
