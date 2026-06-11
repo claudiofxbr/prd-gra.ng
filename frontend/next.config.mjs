@@ -1,12 +1,17 @@
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV !== 'production'
 
-// CSP aplicado em todos os ambientes (dev e prod).
+// Em dev, o HMR/React Fast Refresh do Next.js usa eval() internamente (react-refresh-utils).
+// 'unsafe-eval' é necessário apenas em dev — em prod o bundle é pré-compilado e não usa eval.
+const scriptSrc = isDev
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' 'inline-speculation-rules'"
+  : "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'"
+
+// 'unsafe-inline' obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e scripts de hydration inline.
 // connect-src 'self' cobre tanto a API relativa (/api) quanto o proxy de dev abaixo.
-// 'unsafe-inline' é obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e scripts de hydration inline.
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'",
+  scriptSrc,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data:",

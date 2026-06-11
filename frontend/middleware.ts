@@ -19,12 +19,17 @@ const BASE_SECURITY_HEADERS: Record<string, string> = {
 // Aplicado apenas em prod — em dev http://localhost o header é ignorado pelo browser.
 const HSTS_PROD = 'max-age=31536000; includeSubDomains'
 
-// 'unsafe-inline' obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e chunks
-// de hydration inline — sem ele o React não inicializa e a página fica em branco.
+// Em dev, o HMR/React Fast Refresh usa eval() — 'unsafe-eval' obrigatório.
+// Em prod o bundle é pré-compilado e não usa eval — removido por segurança.
+// 'unsafe-inline' obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e chunks de hydration inline.
 // connect-src 'self' cobre tanto a API relativa (/api) quanto o proxy de dev do next.config.mjs.
+const scriptSrc = IS_PROD
+  ? "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'"
+  : "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' 'inline-speculation-rules'"
+
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'",
+  scriptSrc,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data:",
@@ -71,7 +76,7 @@ export const config = {
   matcher: [
     // '/' (home) precisa ser listada explicitamente — o padrão de negação não casa com path vazio
     '/',
-    // Todas as rotas não-estáticas: /login, /register, /prd/..., /dashboard/..., etc.
-    '/((?!_next/static|_next/image|favicon\\.ico).+)',
+    // Todas as rotas não-estáticas — exclui assets estáticos e favicons
+    '/((?!_next/static|_next/image|favicon\\.ico|favicon\\.svg).+)',
   ],
 }
