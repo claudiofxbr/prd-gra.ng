@@ -16,6 +16,10 @@ const BASE_SECURITY_HEADERS: Record<string, string> = {
   'X-DNS-Prefetch-Control': 'on',
 }
 
+// HSTS instrui browsers a usar HTTPS por 1 ano após a primeira visita.
+// Aplicado apenas em prod — em dev http://localhost o header é ignorado pelo browser.
+const HSTS_PROD = 'max-age=31536000; includeSubDomains'
+
 // 'unsafe-inline' obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e chunks
 // de hydration inline — sem ele o React não inicializa e a página fica em branco.
 // connect-src: API relativa (/api) já é coberta por 'self' — não adicionar origem.
@@ -57,6 +61,7 @@ export function middleware(request: NextRequest) {
   }
   if (IS_PROD) {
     response.headers.set('Content-Security-Policy', CSP_PROD)
+    response.headers.set('Strict-Transport-Security', HSTS_PROD)
   }
 
   return response

@@ -45,6 +45,10 @@ export default function EditPrdPage() {
     setLoading(true)
     try {
       const updated = await api.prds.update(id, data)
+      if (!updated) {
+        // apiFetch retorna undefined após 401 + redirect para /login
+        return
+      }
       setPrd(updated)
       router.push('/prd')
     } catch (e) {

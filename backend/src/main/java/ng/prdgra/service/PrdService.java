@@ -75,7 +75,7 @@ public class PrdService {
             try {
                 prd.setStatus(Prd.PrdStatus.valueOf(request.status()));
             } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Status inválido: " + request.status());
+                throw new IllegalArgumentException("Status inválido. Valores aceitos: DRAFT, REVIEW, APPROVED");
             }
         }
         @SuppressWarnings("null") Prd saved = prdRepository.save(prd);
