@@ -7,7 +7,6 @@ const TOKEN_COOKIE = 'prdgra_token'
 const IS_PROD = process.env.NODE_ENV === 'production'
 
 // Headers de segurança aplicados via middleware (funciona em dev e prod, App Router e Pages Router)
-// O next.config.mjs headers() só é aplicado em prod — o middleware garante consistência em dev também.
 const BASE_SECURITY_HEADERS: Record<string, string> = {
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
@@ -22,15 +21,16 @@ const HSTS_PROD = 'max-age=31536000; includeSubDomains'
 
 // 'unsafe-inline' obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e chunks
 // de hydration inline — sem ele o React não inicializa e a página fica em branco.
-// connect-src: API relativa (/api) já é coberta por 'self' — não adicionar origem.
-const CSP_PROD =
-  "default-src 'self'; " +
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'; " +
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-  "font-src 'self' data: https://fonts.gstatic.com; " +
-  "img-src 'self' data:; " +
-  "connect-src 'self'; " +
-  "frame-ancestors 'none'"
+// connect-src 'self' cobre tanto a API relativa (/api) quanto o proxy de dev do next.config.mjs.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+].join('; ')
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -55,12 +55,12 @@ export function middleware(request: NextRequest) {
     response = NextResponse.next()
   }
 
-  // Aplicar headers de segurança em todas as respostas
+  // Aplicar headers de segurança em todas as respostas (dev e prod)
   for (const [key, value] of Object.entries(BASE_SECURITY_HEADERS)) {
     response.headers.set(key, value)
   }
+  response.headers.set('Content-Security-Policy', CSP)
   if (IS_PROD) {
-    response.headers.set('Content-Security-Policy', CSP_PROD)
     response.headers.set('Strict-Transport-Security', HSTS_PROD)
   }
 

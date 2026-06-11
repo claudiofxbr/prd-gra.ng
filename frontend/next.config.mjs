@@ -1,37 +1,16 @@
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV !== 'production'
 
-// Extrair apenas a origem (scheme://host:port) da variavel de ambiente.
-// NEXT_PUBLIC_API_URL pode ser "http://localhost:8080/api" ou "/api" (relativa).
-// O CSP connect-src precisa da ORIGEM, nao do path — o browser valida por origem, nao por prefixo de path.
-function extractOrigin(urlWithPath) {
-  try {
-    const u = new URL(urlWithPath)
-    return u.origin  // ex: "http://localhost:8080"
-  } catch {
-    return urlWithPath
-  }
-}
-
-const rawApiUrl  = process.env.NEXT_PUBLIC_API_URL ?? ''
-// Se a URL for relativa ("/api") ou vazia, 'self' no connect-src já cobre — não adicionar origem extra.
-const apiOrigin  = rawApiUrl.startsWith('http') ? extractOrigin(rawApiUrl) : ''
-
-// connect-src: 'self' cobre APIs relativas; adiciona origem explícita só quando é cross-origin.
-const connectSrc = apiOrigin
-  ? `connect-src 'self' ${apiOrigin}`
-  : "connect-src 'self'"
-
 // CSP aplicado em todos os ambientes (dev e prod).
-// Next.js 15 App Router com SSR injeta __NEXT_DATA__ e scripts de hydration inline —
-// 'unsafe-inline' é obrigatório em script-src sem middleware de nonce.
+// connect-src 'self' cobre tanto a API relativa (/api) quanto o proxy de dev abaixo.
+// 'unsafe-inline' é obrigatório: Next.js 15 SSR injeta __NEXT_DATA__ e scripts de hydration inline.
 const cspDirectives = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'inline-speculation-rules'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data:",
-  connectSrc,
+  "connect-src 'self'",
   "frame-ancestors 'none'",
 ]
 
@@ -46,6 +25,12 @@ const securityHeaders = [
 
 const BASE_PATH = '/prd-gra.ng'
 
+// Em dev, o backend roda em localhost:8080. Para que as chamadas à API sejam
+// same-origin (e não violem o CSP connect-src 'self'), o Next.js redireciona
+// /api/* → http://localhost:8080/api/* internamente no servidor.
+// Em produção o nginx já faz esse proxy — rewrites não são necessários.
+const DEV_API_BACKEND = process.env.DEV_API_URL ?? 'http://localhost:8080'
+
 const nextConfig = {
   output: isDev ? undefined : 'standalone',
   basePath: BASE_PATH,
@@ -53,13 +38,24 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_BASE_PATH: BASE_PATH,
   },
-  // typedRoutes promovido para estavel no Next.js 15 — saiu do bloco experimental
+  // typedRoutes promovido para estável no Next.js 15 — saiu do bloco experimental
   ...(isDev ? {} : { typedRoutes: true }),
   async headers() {
     return [
       {
         source: '/(.*)',
         headers: securityHeaders,
+      },
+    ]
+  },
+  // Proxy de desenvolvimento: /api/* → backend em localhost:8080/api/*
+  // Isso torna a API same-origin em dev, sem precisar de CORS ou CSP cross-origin.
+  async rewrites() {
+    if (!isDev) return []
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${DEV_API_BACKEND}/api/:path*`,
       },
     ]
   },

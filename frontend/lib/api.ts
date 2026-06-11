@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api'
 const TIMEOUT_MS = 15_000
 
 // Garante que apenas uma tentativa de refresh ocorre por vez (evita loop em race conditions)
