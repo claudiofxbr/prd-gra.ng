@@ -50,11 +50,14 @@ const nextConfig = {
   },
   // Proxy de desenvolvimento: /api/* → backend em localhost:8080/api/*
   // Isso torna a API same-origin em dev, sem precisar de CORS ou CSP cross-origin.
+  // basePath: false é obrigatório — sem ele o Next.js exigiria /prd-gra.ng/api/:path*
+  // no source, mas o browser envia fetch('/api/...') que resolve para origem raiz.
   async rewrites() {
     if (!isDev) return []
     return [
       {
         source: '/api/:path*',
+        basePath: false,
         destination: `${DEV_API_BACKEND}/api/:path*`,
       },
     ]
