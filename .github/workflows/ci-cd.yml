@@ -99,7 +99,9 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ env.IMAGE_FRONTEND }}:${{ github.sha }},${{ env.IMAGE_FRONTEND }}:latest
-          build-args: CACHE_BUST=${{ github.sha }}
+          build-args: |
+            CACHE_BUST=${{ github.sha }}
+            NEXT_PUBLIC_API_URL=/api
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

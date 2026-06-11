@@ -10,6 +10,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_PUBLIC_* são inlined no bundle pelo Next.js em build-time — devem ser ARG, não ENV de runtime.
+# O valor padrão '/api' funciona em produção: o nginx faz proxy de /api/* → backend:8080.
+ARG NEXT_PUBLIC_API_URL=/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 # CACHE_BUST é passado pelo CI com o SHA do commit — invalida o cache BuildKit
 # no stage builder a cada deploy, garantindo que next.config.mjs seja recompilado.
 ARG CACHE_BUST=dev
