@@ -99,7 +99,7 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ env.IMAGE_FRONTEND }}:${{ github.sha }},${{ env.IMAGE_FRONTEND }}:latest
-          no-cache: true
+          cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build & push nginx
