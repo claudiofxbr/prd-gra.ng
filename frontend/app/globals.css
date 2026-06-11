@@ -238,4 +238,14 @@
     background-color: var(--surface-overlay);
     @apply rounded animate-pulse;
   }
+
+  /* ── CTA da landing page — botão claro sobre fundo accent ── */
+  .cta-register-btn {
+    background-color: var(--surface-base);
+    color: var(--accent);
+    @apply font-semibold px-8 py-3 rounded-lg transition-colors inline-block;
+  }
+  .cta-register-btn:hover {
+    background-color: var(--surface-raised);
+  }
 }

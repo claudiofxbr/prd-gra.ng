@@ -68,29 +68,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* CTA — usa btn-primary sobre fundo accent para manter consistência com o design system */}
       <section
         className="py-14 px-4 text-center"
-        style={{ backgroundColor: 'var(--accent)', color: '#fff' }}
+        style={{ backgroundColor: 'var(--accent)' }}
       >
-        <h2 className="text-2xl font-bold mb-4">Pronto para começar?</h2>
-        <p className="mb-6 opacity-90">
+        <h2 className="text-2xl font-bold mb-4" style={{ color: '#fff' }}>
+          Pronto para começar?
+        </h2>
+        <p className="mb-6" style={{ color: 'rgba(255,255,255,0.85)' }}>
           Crie sua conta gratuitamente e comece a documentar.
         </p>
-        <Link
-          href="/register"
-          className="font-semibold px-8 py-3 rounded-lg transition-colors inline-block"
-          style={{
-            backgroundColor: 'var(--surface-base)',
-            color: 'var(--accent)',
-          }}
-          onMouseOver={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--surface-raised)'
-          }}
-          onMouseOut={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--surface-base)'
-          }}
-        >
+        <Link href="/register" className="cta-register-btn">
           Criar Conta
         </Link>
       </section>
