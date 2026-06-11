@@ -141,7 +141,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # command_timeout: tempo máximo por conexão SSH (deploy + smoke test)
+          # command_timeout: tempo máximo total da sessão SSH
           command_timeout: 12m
           envs: DATABASE_URL,JWT_SECRET,NEXT_PUBLIC_API_URL,CORS_ALLOWED_ORIGINS,DOMAIN,TRUSTED_PROXY_IP,GHCR_REPO,IMAGE_TAG,DEPLOY_TOKEN,DEPLOY_ACTOR,GH_REPOSITORY
           script_stop: true
@@ -301,27 +301,8 @@ jobs:
             docker image prune -f --filter "until=72h"
             set -e
 
-            # ── Smoke test externo via domínio público ─────────────────────
-            # Valida que o Traefik está roteando corretamente para o app
-            echo "Smoke test externo: https://${DOMAIN}/api/actuator/health ..."
-            EXT_OK=false
-            for i in $(seq 1 6); do
-              EXT_STATUS=$(wget -qO- --timeout=10 "https://${DOMAIN}/api/actuator/health" 2>/dev/null \
-                | grep -o '"status":"[^"]*"' | head -1 || echo "")
-              if echo "$EXT_STATUS" | grep -q '"UP"'; then
-                echo "Smoke test externo aprovado na tentativa $i."
-                EXT_OK=true
-                break
-              fi
-              echo "Tentativa $i: $EXT_STATUS — aguardando 5s..."
-              sleep 5
-            done
-            if [ "$EXT_OK" = "false" ]; then
-              echo "AVISO: smoke test externo falhou — Traefik ou DNS pode estar desatualizado."
-              echo "App interno OK. Verificar manualmente: https://${DOMAIN}/prd-gra.ng/"
-            fi
-
             echo "Deploy concluido com sucesso: SHA=$IMAGE_TAG"
+            echo "Smoke test externo sera executado pelo job e2e-smoke (continue-on-error: true)."
 
   # ─────────────────────────────────────────────────────────────
   e2e-smoke:
